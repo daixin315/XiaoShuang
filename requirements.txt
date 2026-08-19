@@ -1,0 +1,5 @@
+# 语音依赖（pip install -r requirements.txt）
+# STT: 本地语音识别
+faster-whisper>=1.0.0
+# TTS: 语音合成（Edge 晓晓等音色）
+edge-tts>=6.1.0

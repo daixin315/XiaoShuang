@@ -1,0 +1,17 @@
+# 编译产物
+/fish_desktop
+/fish_desktop.exe
+*.exe
+
+# 本地配置（含密钥）
+settings.json
+mood.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 系统
+.DS_Store

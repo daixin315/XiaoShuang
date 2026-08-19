@@ -1,0 +1,13 @@
+{
+  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "api_key": "sk-你的KEY",
+  "model": "qwen-plus",
+  "system": "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。",
+  "stt_mode": "local",
+  "stt_model": "medium",
+  "stt_cmd": "python3 scripts/whisper_stt.py",
+  "tts_mode": "edge",
+  "tts_voice": "zh-CN-XiaoxiaoNeural",
+  "tts_bin": "edge-tts",
+  "record_dev": ""
+}

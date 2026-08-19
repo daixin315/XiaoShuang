@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 )
@@ -97,6 +98,69 @@ func TestCmdMenuPopup(t *testing.T) {
 		t.Fatal("第二次输入 / 菜单未弹出")
 	}
 	t.Log("✅ 菜单二次弹出正常")
+}
+
+// 6. 点击子菜单项后菜单必须自动关闭（用户反馈：点了不消失）
+func TestMenuSubmenuItemDismisses(t *testing.T) {
+	testInit(t)
+	app := test.NewApp()
+	defer app.Quit()
+	go runMainWindow(".")
+	time.Sleep(300 * time.Millisecond)
+	if testInput == nil {
+		t.Fatal("窗口未构建")
+	}
+
+	test.Type(testInput, "/")
+	time.Sleep(200 * time.Millisecond)
+	if testCmdMenu == nil || !testCmdMenu.Visible() {
+		t.Fatal("菜单未弹出")
+	}
+
+	// 键盘导航（等价鼠标点击）：
+	// Down → 激活第一个 item（😊 表情）
+	// Right → 展开子菜单
+	// Down → 子菜单第一个（😊 开心）
+	// Return → 触发 action
+	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
+	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyRight})
+	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
+	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
+	time.Sleep(300 * time.Millisecond)
+
+	if testCmdMenu.Visible() {
+		t.Error("❌ 点击子菜单项后菜单未关闭（用户反馈的 bug）")
+	} else {
+		t.Log("✅ 点击子菜单项后菜单已关闭")
+	}
+	// 输入框应被清空
+	if testInput.Text != "" {
+		t.Errorf("输入框应为空, got %q", testInput.Text)
+	}
+}
+
+// 7. 点击菜单外部任意区域菜单必须关闭
+func TestMenuDismissOnOutsideTap(t *testing.T) {
+	testInit(t)
+	app := test.NewApp()
+	defer app.Quit()
+	go runMainWindow(".")
+	time.Sleep(300 * time.Millisecond)
+
+	test.Type(testInput, "/")
+	time.Sleep(200 * time.Millisecond)
+	if testCmdMenu == nil || !testCmdMenu.Visible() {
+		t.Fatal("菜单未弹出")
+	}
+
+	// 点击输入框等菜单外区域 → canvas 分发到 overlay 的 dismiss 回调（Dismiss 等价）
+	testCmdMenu.Dismiss()
+	time.Sleep(200 * time.Millisecond)
+	if testCmdMenu.Visible() {
+		t.Error("❌ 点击输入框后菜单未关闭（用户反馈的 bug）")
+	} else {
+		t.Log("✅ 点击菜单外区域菜单已关闭")
+	}
 }
 
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）

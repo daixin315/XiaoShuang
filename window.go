@@ -126,14 +126,12 @@ func runMainWindow(exeDir string) {
 		exprItem.ChildMenu = fyne.NewMenu("表情", exprItems...)
 		actItem := fyne.NewMenuItem("🎬 动作", nil)
 		actItem.ChildMenu = fyne.NewMenu("动作", actItems...)
-		// 第 3 项：取消当前播放，回主图
-		cancelItem := fyne.NewMenuItem("🏠 回主图", func() {
-			input.SetText("")
-			playMainStatic(player)
-		})
-		cmdMenu = widget.NewPopUpMenu(fyne.NewMenu("", exprItem, actItem, fyne.NewMenuItemSeparator(), cancelItem), w.Canvas())
+		cmdMenu = widget.NewPopUpMenu(fyne.NewMenu("", exprItem, actItem), w.Canvas())
 		testCmdMenu = cmdMenu
+		// 注意：NewPopUpMenu 默认 OnDismiss = p.Hide()，这里覆盖时必须补回 Hide，
+		// 否则点击外部/点选菜单项后菜单不会消失（fyne 只调用这一处 OnDismiss）
 		cmdMenu.OnDismiss = func() {
+			cmdMenu.Hide()
 			// 关闭时清掉以 / 开头的输入（菜单命令不进入聊天）
 			if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
 				input.SetText("")

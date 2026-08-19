@@ -71,10 +71,10 @@ func runMainWindow(exeDir string) {
 	// 初始显示主图
 	playMainStatic(player)
 
-	// ===== 对话气泡层（浮动在视频上）=====
+	// ===== 对话区（视频下方，约5行，可滚动）=====
 	bubbleBox := container.NewVBox()
 	bubbleScroll := container.NewVScroll(bubbleBox)
-	bubbleScroll.SetMinSize(fyne.NewSize(480, 270))
+	bubbleScroll.SetMinSize(fyne.NewSize(480, 220))
 
 	addMsg := func(role, text string) {
 		fyneDo(func() {
@@ -185,18 +185,12 @@ func runMainWindow(exeDir string) {
 
 	bottomBar := container.NewHBox(menuBtn, recBtn, setBtn, langSel)
 
-	// ===== 根布局：视频(上) + 输入(中) + 底部(下) =====
-	bubbleLayer := container.NewBorder(
-		nil,       // top
-		bubbleBox, // bottom（气泡从底部向上浮动）
-		nil, nil, nil,
-	)
-	videoStack := container.NewStack(videoImg, bubbleLayer)
+	// ===== 根布局：视频(顶) + 对话(中，自动填满) + 输入/设置(底) =====
 	root := container.NewBorder(
-		nil,
-		container.NewVBox(compose, bottomBar),
+		videoImg,                              // top: 视频固定最上面
+		container.NewVBox(compose, bottomBar), // bottom: 输入行 + 底部栏（和以前一样）
 		nil, nil,
-		videoStack,
+		bubbleScroll, // center: 对话区填满中间
 	)
 	w.SetContent(root)
 	w.ShowAndRun()

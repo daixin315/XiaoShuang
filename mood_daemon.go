@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -70,52 +69,11 @@ func init() {
 	}
 }
 
-// 情绪 → 视频文件映射（idle 用静态主图）
-// 主动情绪用"动作明显+无缝循环"动画（i2v动作版正放倒放，16秒）
-var emotionFiles = map[string]string{
-	"idle":       "final_v3_1280.png",
-	"happy":      "happy_seed.mp4",
-	"smile":      "smile_seed.mp4",
-	"daze":       "daze_seed.mp4",
-	"sad":        "sad_seed.mp4",
-	"think":      "think_seed.mp4",
-	"trance":     "trance_seed.mp4",
-	"surprised":  "surprised_seed.mp4",
-	"proud":      "proud_seed.mp4",
-	"shy":        "shy_seed.mp4",
-	"sleepy":     "sleepy_seed.mp4",
-	"angry":      "angry_seed.mp4",
-	"excited":    "excited_seed.mp4",
-	"crying":     "crying_seed.mp4",
-	"wink":       "wink_seed.mp4",
-	"wronged":    "wronged_seed.mp4",
-	"cute":       "cute_seed.mp4",
-	"scared":     "scared_seed.mp4",
-	"speechless": "speechless_seed.mp4",
-}
+// 情绪 → 视频文件映射（由 scanResources 动态索引，见 resources.go）
+// 旧英文 seed 文件名映射已废弃：assets/表情/ 下是中文文件名
 
 // 空闲行为已禁用（用户要求只做表情）
 var idleEmotions = []string{}
-
-// 空闲表情动画（主图→表情→主图，循环）
-var idleAnims = map[string]string{
-	"daze":   "daze_loop.mp4",
-	"trance": "trance_loop.mp4",
-	"think":  "think_loop.mp4",
-	"sleepy": "sleepy_loop.mp4",
-	"lie":    "lie_loop.mp4",
-	"swing":  "swing_loop.mp4",
-}
-
-// 每个行为的动画时长（荡秋千荡久一点）
-var animDurs = map[string]time.Duration{
-	"daze":   8 * time.Second,
-	"trance": 8 * time.Second,
-	"think":  8 * time.Second,
-	"sleepy": 8 * time.Second,
-	"lie":    8 * time.Second,
-	"swing":  19 * time.Second,
-}
 
 // getXauthority 从 Xwayland 进程参数里动态获取当前 auth 路径（带重试，开机时 Xwayland 可能未就绪）
 func getXauthority() string {
@@ -208,18 +166,54 @@ func readMood() string {
 func main() {
 	flag.StringVar(&videoDir, "video-dir", videoDir, "素材目录（含主图和动画）")
 	flag.StringVar(&moodFile, "mood-file", moodFile, "情绪文件路径（JSON: {\"emotion\":\"happy\"}）")
+	noMpv := flag.Bool("no-mpv", true, "一体化模式：不使用独立 mpv 窗口（视频由 Fyne 窗口内播放）")
 	flag.Parse()
 
 	fmt.Println("🐟 桌面形象守护进程启动")
 	fmt.Printf("  素材目录: %s\n", videoDir)
 	fmt.Printf("  情绪文件: %s\n", moodFile)
+	scanResources()
 
-	// 守护逻辑（mpv + 表情轮询）放 goroutine，主线程跑 Fyne 侧边栏
-	go daemonLoop()
+	if !*noMpv {
+		// 传统模式：独立 mpv 窗口 + 表情轮询（无侧边栏一体化）
+		go daemonLoop()
+	} else {
+		// 一体化模式：只监听 mood.json（外部 set_mood.sh 联动窗口内播放）
+		go watchMoodFile()
+	}
 
-	// 侧边栏（Fyne 需要主线程）
-	fmt.Println("  💬 侧边栏已启动")
-	runSidebar(exeDirOf())
+	// Fyne 一体化窗口（Fyne 需要主线程）
+	fmt.Println("  💬 一体化窗口已启动")
+	runMainWindow(exeDirOf())
+}
+
+// watchMoodFile 监听 mood.json 变化，切换窗口内视频（一体化模式）
+func watchMoodFile() {
+	last := ""
+	for {
+		data, err := os.ReadFile(moodFile)
+		if err == nil {
+			var m struct {
+				Emotion string `json:"emotion"`
+			}
+			if json.Unmarshal(data, &m) == nil && m.Emotion != "" && m.Emotion != last {
+				fmt.Printf("  🎭 情绪: %s\n", m.Emotion)
+				if globalPlayer != nil {
+					vp := resolveEmotion(m.Emotion)
+					if vp != "" && fileExists(vp) {
+						if vp == mainImgPath {
+							// 主图（idle）→ 静态显示
+							playMainStatic(globalPlayer)
+						} else {
+							globalPlayer.Play(vp, 24)
+						}
+						last = m.Emotion // 只有真正播放了才记录，避免 player 未就绪时漏触发
+					}
+				}
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 func daemonLoop() {
@@ -227,7 +221,7 @@ func daemonLoop() {
 	fmt.Printf("  XAUTHORITY: %s\n", xauth)
 
 	// 启动 mpv，初始显示静态主图
-	mpvCmd := startMpv(xauth, filepath.Join(videoDir, "final_v3_1280.png"))
+	mpvCmd := startMpv(xauth, mainImgPath)
 	defer func() {
 		if mpvCmd.Process != nil {
 			mpvCmd.Process.Kill()
@@ -238,17 +232,7 @@ func daemonLoop() {
 	defer conn.Close()
 	fmt.Println("✅ IPC 已连接")
 
-	// 空闲状态机：displaying(显示主图) / animating(播放表情动画后回主图)
 	lastEmotion := "idle"
-	idleState := "displaying"
-	// 行为浮现间隔：30-60秒随机
-	idleInterval := func() time.Duration {
-		return time.Duration(30 + rand.Intn(31)) * time.Second
-	}
-	// 洗牌队列：随机顺序但保证所有行为都出现
-	idleQueue := rand.Perm(len(idleEmotions))
-	idleQueueIdx := 0
-	nextSwitchAt := time.Now().Add(idleInterval())
 
 	for {
 		emotion := readMood()
@@ -256,12 +240,11 @@ func daemonLoop() {
 		// 主动情绪优先
 		if emotion != "idle" {
 			if emotion != lastEmotion {
-				f := emotionFiles[emotion]
-				if f == "" {
-					f = emotionFiles["idle"]
+				full := resolveEmotion(emotion)
+				if full == "" {
+					full = mainImgPath
 				}
-				full := filepath.Join(videoDir, f)
-				fmt.Printf("🎭 情绪切换: %s → %s (%s)\n", lastEmotion, emotion, f)
+				fmt.Printf("🎭 情绪切换: %s → %s (%s)\n", lastEmotion, emotion, full)
 				switchVideo(conn, full)
 				lastEmotion = emotion
 			}
@@ -272,39 +255,10 @@ func daemonLoop() {
 		// 从主动情绪回到空闲：显示主图
 		if lastEmotion != "idle" {
 			fmt.Println("🎭 回到空闲, 显示主图")
-			switchVideo(conn, filepath.Join(videoDir, "final_v3_1280.png"))
+			switchVideo(conn, mainImgPath)
 			lastEmotion = "idle"
-			idleState = "displaying"
-			nextSwitchAt = time.Now().Add(idleInterval())
 			time.Sleep(500 * time.Millisecond)
 			continue
-		}
-
-		// 空闲状态机
-		switch idleState {
-		case "displaying":
-			// 空闲行为已禁用：只显示主图
-			if len(idleEmotions) > 0 && time.Now().After(nextSwitchAt) {
-				f := idleEmotions[idleQueue[idleQueueIdx]]
-				idleQueueIdx++
-				if idleQueueIdx >= len(idleQueue) {
-					idleQueue = rand.Perm(len(idleEmotions)) // 一轮播完重新洗牌
-					idleQueueIdx = 0
-				}
-				full := filepath.Join(videoDir, idleAnims[f])
-				fmt.Printf("🎭 空闲浮现行为: %s\n", f)
-				switchVideo(conn, full)
-				idleState = "animating"
-				nextSwitchAt = time.Now().Add(animDurs[f])
-			}
-		case "animating":
-			// 动画播完回到主图
-			if time.Now().After(nextSwitchAt) {
-				fmt.Println("🎭 回到主图")
-				switchVideo(conn, filepath.Join(videoDir, "final_v3_1280.png"))
-				idleState = "displaying"
-				nextSwitchAt = time.Now().Add(idleInterval())
-			}
 		}
 
 		time.Sleep(500 * time.Millisecond)

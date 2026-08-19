@@ -43,6 +43,42 @@ func fyneDo(f func()) {
 	fyne.Do(f)
 }
 
+// fixedChatLayout 固定中间对话区高度的三栏布局：
+//
+//	0: 视频（固定顶部） 1: 对话区（固定 chatH） 2: 底部（按自身高度，贴窗口底）
+type fixedChatLayout struct{ chatH float32 }
+
+func (l fixedChatLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	if len(objects) < 3 {
+		return
+	}
+	videoH := objects[0].MinSize().Height
+	bottomH := objects[2].MinSize().Height
+	chatH := l.chatH
+	if size.Height < videoH+chatH+bottomH { // 窗口太矮时优先保视频和底部
+		chatH = size.Height - videoH - bottomH
+		if chatH < 0 {
+			chatH = 0
+		}
+	}
+	objects[0].Resize(fyne.NewSize(size.Width, videoH))
+	objects[0].Move(fyne.NewPos(0, 0))
+	objects[1].Resize(fyne.NewSize(size.Width, chatH))
+	objects[1].Move(fyne.NewPos(0, videoH))
+	objects[2].Resize(fyne.NewSize(size.Width, bottomH))
+	objects[2].Move(fyne.NewPos(0, size.Height-bottomH))
+}
+
+func (l fixedChatLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	w := float32(0)
+	for _, o := range objects {
+		if o.MinSize().Width > w {
+			w = o.MinSize().Width
+		}
+	}
+	return fyne.NewSize(w, objects[0].MinSize().Height+l.chatH+objects[2].MinSize().Height)
+}
+
 // 测试模式标志（测试文件 TestMain 置 true 后复用 fyne test app）
 var useTestApp bool
 
@@ -185,12 +221,12 @@ func runMainWindow(exeDir string) {
 
 	bottomBar := container.NewHBox(menuBtn, recBtn, setBtn, langSel)
 
-	// ===== 根布局：视频(顶) + 对话(中，自动填满) + 输入/设置(底) =====
-	root := container.NewBorder(
-		videoImg,                              // top: 视频固定最上面
-		container.NewVBox(compose, bottomBar), // bottom: 输入行 + 底部栏（和以前一样）
-		nil, nil,
-		bubbleScroll, // center: 对话区填满中间
+	// ===== 根布局：视频(顶,固定) + 对话(中,固定~5行) + 输入/设置(底,占剩余) =====
+	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
+	root := container.New(fixedChatLayout{chatH: 220},
+		videoImg,                              // 0: 视频固定顶部
+		bubbleScroll,                          // 1: 对话区固定 220px（约5行）
+		container.NewVBox(compose, bottomBar), // 2: 底部占剩余
 	)
 	w.SetContent(root)
 	w.ShowAndRun()

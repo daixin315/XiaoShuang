@@ -113,6 +113,7 @@ func runMainWindow(exeDir string) {
 	loadSettings(exeDir)
 	loadMemory(exeDir)
 	scanResources()
+	buildActions() // 动作记忆区：从资源扫描生成（在 scanResources 之后）
 
 	var a fyne.App
 	if useTestApp {
@@ -393,9 +394,14 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		if isErr {
 			reply = friendlyChatError(err)
 		}
-		addMsg("assistant", reply)
+		// 解析 AI 选择的表演动作/表情
+		cleanReply, actName := extractAction(reply)
+		if !isErr && actName != "" {
+			playExtractedAction(actName, player)
+		}
+		addMsg("assistant", cleanReply)
 		chatLogMu.Lock()
-		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
+		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: cleanReply})
 		chatLogMu.Unlock()
 		if !isErr {
 			setMoodNow("happy", player)
@@ -505,9 +511,14 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 			if isErr {
 				reply = friendlyChatError(err)
 			}
-			addMsg("assistant", reply)
+			// 解析 AI 选择的表演动作/表情
+			cleanReply, actName := extractAction(reply)
+			if !isErr && actName != "" {
+				playExtractedAction(actName, player)
+			}
+			addMsg("assistant", cleanReply)
 			chatLogMu.Lock()
-			chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
+			chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: cleanReply})
 			chatLogMu.Unlock()
 			if isErr {
 				setMoodNow("sad", player)

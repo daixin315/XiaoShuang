@@ -252,6 +252,32 @@ func TestMemory(t *testing.T) {
 	t.Logf("✅ 记忆模块v2: 分层/更新/去重/规范化/上限/删除/落盘读回 全部通过")
 }
 
+// 10. extractAction 解析 AI 的 [表演] 标记
+func TestExtractAction(t *testing.T) {
+	testInit(t) // 加载资源（exprFiles/actionFiles）
+	// 有效动作
+	clean, act := extractAction("我荡个秋千给你看~\n[表演]单人荡秋千")
+	if act != "单人荡秋千" || strings.Contains(clean, "表演") {
+		t.Errorf("动作解析失败: clean=%q act=%q", clean, act)
+	}
+	// 有效表情
+	clean, act = extractAction("好开心呀！\n[表演]开心")
+	if act != "开心" || strings.Contains(clean, "表演") {
+		t.Errorf("表情解析失败: clean=%q act=%q", clean, act)
+	}
+	// 无表演标记
+	clean, act = extractAction("今天天气不错")
+	if act != "" || clean != "今天天气不错" {
+		t.Errorf("无标记解析失败: clean=%q act=%q", clean, act)
+	}
+	// 无效名字（不在列表里）→ 保留原文
+	clean, act = extractAction("嘿嘿\n[表演]不存在的东西")
+	if act != "" || !strings.Contains(clean, "不存在") {
+		t.Errorf("无效名字应保留: clean=%q act=%q", clean, act)
+	}
+	t.Log("✅ extractAction: 动作/表情/无标记/无效名 全部通过")
+}
+
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）
 func TestPlayOnce(t *testing.T) {
 	testInit(t)

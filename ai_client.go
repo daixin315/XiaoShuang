@@ -63,6 +63,9 @@ func chatWithAIEx(history []ChatMessage, withSystem, withMem bool) (string, erro
 		if mem := memoryPrompt(incSys); mem != "" {
 			messages = append(messages, ChatMessage{Role: "system", Content: mem})
 		}
+		if ab := actionAbilityPrompt(); ab != "" {
+			messages = append(messages, ChatMessage{Role: "system", Content: ab})
+		}
 	}
 	messages = append(messages, history...)
 

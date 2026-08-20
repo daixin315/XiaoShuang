@@ -6,6 +6,7 @@
 # 本地配置（含密钥）
 settings.json
 mood.json
+memory.json
 
 # Python
 __pycache__/

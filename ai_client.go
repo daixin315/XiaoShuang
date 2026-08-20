@@ -29,8 +29,13 @@ type ChatMessage struct {
 	Content string `json:"content"`
 }
 
-// chatWithAI 调用 OpenAI 兼容 API 获取回复
+// chatWithAI 调用 OpenAI 兼容 API 获取回复（带人设 + 记忆注入）
 func chatWithAI(history []ChatMessage) (string, error) {
+	return chatWithAIEx(history, true, true)
+}
+
+// chatWithAIEx 灵活版：withSystem=带人设，withMem=带记忆注入（记忆总结调用用 false,false 避免递归注入）
+func chatWithAIEx(history []ChatMessage, withSystem, withMem bool) (string, error) {
 	settingsMu.RLock()
 	s := settings
 	settingsMu.RUnlock()
@@ -40,8 +45,13 @@ func chatWithAI(history []ChatMessage) (string, error) {
 	}
 
 	messages := []ChatMessage{}
-	if s.System != "" {
+	if withSystem && s.System != "" {
 		messages = append(messages, ChatMessage{Role: "system", Content: s.System})
+	}
+	if withMem {
+		if mem := memoryPrompt(); mem != "" {
+			messages = append(messages, ChatMessage{Role: "system", Content: mem})
+		}
 	}
 	messages = append(messages, history...)
 

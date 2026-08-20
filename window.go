@@ -38,6 +38,29 @@ var (
 	chatLogMu   sync.Mutex
 )
 
+// 静默总结：一轮对话 = 用户停止发言 5 分钟；到点总结新增消息
+var (
+	summarizeTimer *time.Timer
+	lastSummaryIdx int
+)
+
+// scheduleSummarize 重置 5 分钟静默计时器（用户每发一条消息调用）
+func scheduleSummarize() {
+	if summarizeTimer != nil {
+		summarizeTimer.Stop()
+	}
+	summarizeTimer = time.AfterFunc(5*time.Minute, func() {
+		chatLogMu.Lock()
+		newMsgs := append([]ChatMessage{}, chatHistory[lastSummaryIdx:]...)
+		lastSummaryIdx = len(chatHistory)
+		chatLogMu.Unlock()
+		if len(newMsgs) >= 2 { // 至少一问一答才算一轮
+			fmt.Printf("[memory] 对话静默5分钟，总结 %d 条新消息\n", len(newMsgs))
+			summarizeForMemory(newMsgs)
+		}
+	})
+}
+
 // fyneDo fyne.Do 包装（供非 UI 线程安全更新界面）
 func fyneDo(f func()) {
 	fyne.Do(f)
@@ -303,6 +326,7 @@ func friendlyChatError(err error) string {
 // sendChat 发送文字对话（播放器联动表情 + 记忆命令 + 自动总结）
 func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 	trimmed := strings.TrimSpace(text)
+	maybeTick() // 时间流转：单天→一周→更远（每小时最多一次）
 
 	// ===== 记忆命令 =====
 	switch {
@@ -312,8 +336,8 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 			addMsg("assistant", "要记住什么呀？格式：/记 内容")
 			return
 		}
-		addMemory(content, "user")
-		addMsg("assistant", "📝 记住啦：「"+content+"」")
+		addMem(content, "important")
+		addMsg("assistant", "📝 记住啦：「"+content+"」（已放入重要记忆）")
 		return
 	case trimmed == "/记忆":
 		addMsg("assistant", listMemory())
@@ -337,6 +361,7 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 	chatLogMu.Unlock()
 	addMsg("user", text)
 	setMoodNow("think", player)
+	scheduleSummarize() // 用户发言 → 重置 5 分钟静默计时器
 
 	go func() {
 		chatLogMu.Lock()
@@ -353,10 +378,6 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		chatLogMu.Unlock()
 		if !isErr {
 			setMoodNow("happy", player)
-			chatLogMu.Lock()
-			snap := append([]ChatMessage{}, chatHistory...)
-			chatLogMu.Unlock()
-			go summarizeForMemory(snap) // 后台自动提炼记忆（静默）
 		} else {
 			setMoodNow("sad", player)
 		}
@@ -444,6 +465,7 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 		chatLogMu.Lock()
 		chatHistory = append(chatHistory, ChatMessage{Role: "user", Content: text})
 		chatLogMu.Unlock()
+		scheduleSummarize() // 语音发言也算对话活跃
 
 		setMoodNow("think", player)
 		chatLogMu.Lock()

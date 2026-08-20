@@ -205,16 +205,22 @@ func runMainWindow(exeDir string) {
 
 	// ===== 底部栏（表情动作菜单 + 语言 + 设置）=====
 	menuBtn := widget.NewButton("🎭 表情/动作", func() { showCmdMenu() })
+	langReady := false // 启动时 SetSelected 触发一次回调，跳过提示
 	langSel := widget.NewSelect([]string{"中文", "English"}, func(v string) {
 		settingsMu.Lock()
 		if v == "English" {
-			settings.System = "You are a cute and gentle girl named Xiaoshuang, a Pisces. Reply briefly and warmly, like a friend."
+			settings.System = "You are a cute and gentle girl named Xiaoshuang, a Pisces. Reply briefly and warmly, like a friend. Always reply in English, no matter what language the user writes in."
 		} else {
-			settings.System = "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。"
+			settings.System = "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。无论对方用什么语言提问，都用中文回复。"
 		}
 		settingsMu.Unlock()
+		saveSettings() // 持久化，重启不丢
+		if langReady {
+			addMsg("assistant", "🌍 已切换到"+v+"模式，之后我都会用"+v+"回复")
+		}
 	})
 	langSel.SetSelected("中文")
+	langReady = true
 	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(w) })
 
 	// ===== 语音按钮（按住说话）=====

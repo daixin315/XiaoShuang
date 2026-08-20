@@ -94,7 +94,8 @@ func runMainWindow(exeDir string) {
 		a = app.NewWithID("fish.desktop.avatar")
 	}
 	w := a.NewWindow("小双 🐟")
-	w.Resize(fyne.NewSize(480, 860))
+	// 高度 = 视频270 + 对话150 + 底部~75，紧凑不留白
+	w.Resize(fyne.NewSize(480, 495))
 
 	// ===== 视频区 =====
 	videoImg := canvas.NewImageFromImage(nil)
@@ -107,10 +108,10 @@ func runMainWindow(exeDir string) {
 	// 初始显示主图
 	playMainStatic(player)
 
-	// ===== 对话区（视频下方，约5行，可滚动）=====
+	// ===== 对话区（视频下方，约3-4行，可滚动）=====
 	bubbleBox := container.NewVBox()
 	bubbleScroll := container.NewVScroll(bubbleBox)
-	bubbleScroll.SetMinSize(fyne.NewSize(480, 220))
+	bubbleScroll.SetMinSize(fyne.NewSize(480, 150))
 
 	addMsg := func(role, text string) {
 		fyneDo(func() {
@@ -221,12 +222,12 @@ func runMainWindow(exeDir string) {
 
 	bottomBar := container.NewHBox(menuBtn, recBtn, setBtn, langSel)
 
-	// ===== 根布局：视频(顶,固定) + 对话(中,固定~5行) + 输入/设置(底,占剩余) =====
+	// ===== 根布局：视频(顶,固定) + 对话(中,固定~3-4行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
-	root := container.New(fixedChatLayout{chatH: 220},
-		videoImg,                              // 0: 视频固定顶部
-		bubbleScroll,                          // 1: 对话区固定 220px（约5行）
-		container.NewVBox(compose, bottomBar), // 2: 底部占剩余
+	root := container.New(fixedChatLayout{chatH: 150},
+		videoImg,                        // 0: 视频固定顶部
+		bubbleScroll,                    // 1: 对话区固定 150px（约3-4行）
+		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
 	)
 	w.SetContent(root)
 	w.ShowAndRun()

@@ -54,7 +54,11 @@ func scheduleSummarize() {
 	}
 	summarizeTimer = time.AfterFunc(5*time.Minute, func() {
 		chatLogMu.Lock()
-		newMsgs := append([]ChatMessage{}, chatHistory[lastSummaryIdx:]...)
+		start := lastSummaryIdx
+		if start > len(chatHistory) {
+			start = 0 // 历史被截断过，从头总结
+		}
+		newMsgs := append([]ChatMessage{}, chatHistory[start:]...)
 		lastSummaryIdx = len(chatHistory)
 		chatLogMu.Unlock()
 		if len(newMsgs) >= 2 { // 至少一问一答才算一轮
@@ -112,6 +116,7 @@ var useTestApp bool
 func runMainWindow(exeDir string) {
 	loadSettings(exeDir)
 	loadMemory(exeDir)
+	loadChatHistory(exeDir) // 对话历史持久化（重启接着聊）
 	scanResources()
 	buildActions() // 动作记忆区：从资源扫描生成（在 scanResources 之后）
 
@@ -268,8 +273,10 @@ func runMainWindow(exeDir string) {
 		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
 	)
 	w.SetContent(root)
-	startTaskWorker()    // 单线程任务队列（聊天/命令/总结串行）
-	go startHTTPServer() // 本地 HTTP 命令接口（127.0.0.1:8721）
+	startTaskWorker()     // 单线程任务队列（聊天/命令/总结串行）
+	go startHTTPServer()  // 本地 HTTP 命令接口（127.0.0.1:8721）
+	go startIdleActions() // 空闲随机小动作
+	go startRecallTimer() // 定时回忆
 	w.ShowAndRun()
 }
 
@@ -370,9 +377,19 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		return
 	}
 
-	chatLogMu.Lock()
-	chatHistory = append(chatHistory, ChatMessage{Role: "user", Content: text})
-	chatLogMu.Unlock()
+	// ===== 触发词表演（秒响应，不走 AI）=====
+	if act := matchTrigger(trimmed); act != "" {
+		if _, ok := actionFiles[act]; ok {
+			playAction(act, player)
+		} else {
+			playExpr(act, player)
+		}
+		addMsg("assistant", "🎭 来啦～")
+		return
+	}
+
+	// 记录用户消息（持久化）
+	appendChat("user", text)
 	addMsg("user", text)
 	setMoodNow("think", player)
 	scheduleSummarize() // 用户发言 → 重置 5 分钟静默计时器
@@ -386,9 +403,7 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 
 	// AI 回复排队（单线程串行：一次只处理一条消息）
 	enqueue(func() {
-		chatLogMu.Lock()
-		h := append([]ChatMessage{}, chatHistory...)
-		chatLogMu.Unlock()
+		h := recentHistory(chatAICtxMax) // 最近 50 条上下文
 		reply, err := chatWithAI(h)
 		isErr := err != nil
 		if isErr {
@@ -400,9 +415,7 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 			playExtractedAction(actName, player)
 		}
 		addMsg("assistant", cleanReply)
-		chatLogMu.Lock()
-		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: cleanReply})
-		chatLogMu.Unlock()
+		appendChat("assistant", cleanReply) // 持久化
 		if !isErr {
 			setMoodNow("happy", player)
 		} else {
@@ -489,10 +502,8 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 			return
 		}
 		addMsg("user", text)
-		chatLogMu.Lock()
-		chatHistory = append(chatHistory, ChatMessage{Role: "user", Content: text})
-		chatLogMu.Unlock()
-		scheduleSummarize() // 语音发言也算对话活跃
+		appendChat("user", text) // 持久化
+		scheduleSummarize()      // 语音发言也算对话活跃
 
 		setMoodNow("think", player)
 		// 忙时提示：小双正在干活，语音消息不入队
@@ -503,9 +514,7 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 		}
 		// AI 回复排队串行（不阻塞录音流程，但回复和主对话互斥）
 		enqueue(func() {
-			chatLogMu.Lock()
-			h := append([]ChatMessage{}, chatHistory...)
-			chatLogMu.Unlock()
+			h := recentHistory(chatAICtxMax)
 			reply, err := chatWithAI(h)
 			isErr := err != nil
 			if isErr {
@@ -517,9 +526,7 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 				playExtractedAction(actName, player)
 			}
 			addMsg("assistant", cleanReply)
-			chatLogMu.Lock()
-			chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: cleanReply})
-			chatLogMu.Unlock()
+			appendChat("assistant", cleanReply) // 持久化
 			if isErr {
 				setMoodNow("sad", player)
 				return

@@ -236,6 +236,43 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "reply": reply})
 }
 
+// handleAction POST /action  {"name":"单人荡秋千"} —— 远程让小双表演动作(单次)或表情(循环)
+func handleAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		http.Error(w, "empty name", http.StatusBadRequest)
+		return
+	}
+	if globalPlayer == nil {
+		http.Error(w, "player not ready", http.StatusServiceUnavailable)
+		return
+	}
+	if _, ok := actionFiles[name]; ok {
+		fmt.Printf("[http] 播放动作: %s\n", name)
+		playAction(name, globalPlayer) // 单次播放，播完回主图
+		writeJSON(w, map[string]any{"ok": true, "played": "action", "name": name})
+		return
+	}
+	if _, ok := exprFiles[name]; ok {
+		fmt.Printf("[http] 播放表情: %s\n", name)
+		playExpr(name, globalPlayer) // 循环播放
+		writeJSON(w, map[string]any{"ok": true, "played": "expr", "name": name})
+		return
+	}
+	http.Error(w, "no such action/expr: "+name, http.StatusNotFound)
+}
+
 // shellQuote 单引号包裹（shell 安全引用，防密码含特殊字符）
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
@@ -277,9 +314,10 @@ func startHTTPServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/exec", handleExec)
 	mux.HandleFunc("/chat", handleChat)
+	mux.HandleFunc("/action", handleAction)
 	mux.HandleFunc("/status", handleStatus)
 	srv := &http.Server{Addr: httpAddr, Handler: mux}
-	fmt.Printf("[http] 接口已启动: http://%s/exec /chat /status\n", httpAddr)
+	fmt.Printf("[http] 接口已启动: http://%s/exec /chat /action /status\n", httpAddr)
 	if err := srv.ListenAndServe(); err != nil {
 		fmt.Printf("[http] 服务退出: %v\n", err)
 	}

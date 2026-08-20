@@ -273,10 +273,17 @@ func runMainWindow(exeDir string) {
 		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
 	)
 	w.SetContent(root)
-	startTaskWorker()     // 单线程任务队列（聊天/命令/总结串行）
-	go startHTTPServer()  // 本地 HTTP 命令接口（127.0.0.1:8721）
+	startTaskWorker() // 单线程任务队列（聊天/命令/总结串行）
+	go startHTTPServer() // 本地 HTTP 命令接口（127.0.0.1:8721）
 	go startIdleActions() // 空闲随机小动作
 	go startRecallTimer() // 定时回忆
+	go startTray(w) // 系统托盘（Linux 需 appindicator）
+
+	// ===== 关窗保护：点 X → 隐藏到托盘（不退出）；托盘右键菜单可退出 =====
+	w.SetCloseIntercept(func() {
+		w.Hide() // 隐藏到托盘，程序继续常驻（HTTP/聊天/回忆都正常）
+	})
+
 	w.ShowAndRun()
 }
 

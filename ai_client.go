@@ -49,7 +49,18 @@ func chatWithAIEx(history []ChatMessage, withSystem, withMem bool) (string, erro
 		messages = append(messages, ChatMessage{Role: "system", Content: s.System})
 	}
 	if withMem {
-		if mem := memoryPrompt(); mem != "" {
+		// 系统区按需注入：最后一条消息涉及系统/设备话题才带上
+		incSys := false
+		if len(history) > 0 {
+			last := history[len(history)-1].Content
+			for _, kw := range systemKeywords {
+				if strings.Contains(last, kw) {
+					incSys = true
+					break
+				}
+			}
+		}
+		if mem := memoryPrompt(incSys); mem != "" {
 			messages = append(messages, ChatMessage{Role: "system", Content: mem})
 		}
 	}

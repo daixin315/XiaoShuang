@@ -182,26 +182,56 @@ func TestFriendlyChatError(t *testing.T) {
 	t.Log("✅ 人性化错误提示覆盖：未配置/401/404/429/超时")
 }
 
-// 9. 记忆模块：增删/去重/上限淘汰/注入文本
+// 9. 记忆模块（六层 v2：分隔符文本 + 内存缓存）
 func TestMemory(t *testing.T) {
-	memoryPath = filepath.Join(t.TempDir(), "memory.json")
-	memories = nil
+	memDir = filepath.Join(t.TempDir(), "memory")
+	os.MkdirAll(memDir, 0o755)
+	coreLines, sysLines, impLines, timeline = nil, nil, nil, nil
 
-	// 添加 + 去重
-	addMemory("用户叫Tom", "user")
-	addMemory("用户叫Tom", "user") // 重复跳过
-	addMemory("用户喜欢喝咖啡", "user")
-	if len(memories) != 2 {
-		t.Fatalf("去重失败: len=%d", len(memories))
+	// 核心区：添加 + 同主题更新（不新增）
+	addMem("用户叫Tom", "core")
+	addMem("用户叫Tom", "core") // 相同 → 更新替换，不重复
+	addMem("用户喜欢喝咖啡", "core")
+	if len(coreLines) != 2 {
+		t.Fatalf("核心区去重失败: len=%d", len(coreLines))
+	}
+	addMem("用户叫Tom，喜欢玩桌游", "core") // 前6字同主题 → 更新
+	if len(coreLines) != 2 || !strings.Contains(coreLines[0], "桌游") {
+		t.Fatalf("核心区更新失败: %v", coreLines)
+	}
+
+	// 规范化：trim/换行转空格/限长
+	addMem("  带空格 内容  ", "important")
+	if impLines[0] != "带空格 内容" {
+		t.Errorf("规范化失败: %q", impLines[0])
+	}
+	addMem("超长内容"+strings.Repeat("字", 200), "important")
+	if len([]rune(impLines[len(impLines)-1])) > 100 {
+		t.Errorf("限长失败")
+	}
+
+	// timeline：添加 + 去重
+	addMem("今天去了超市", "today")
+	addMem("今天去了超市", "today") // 重复跳过
+	if len(timeline) != 1 {
+		t.Errorf("timeline 去重失败: len=%d", len(timeline))
+	}
+
+	// 重要区上限：塞 50 条 → 只剩 40
+	for i := 0; i < 50; i++ {
+		addMem(fmt.Sprintf("重要条目%02d", i), "important")
+	}
+	if len(impLines) > importantMax {
+		t.Errorf("重要区超限: %d > %d", len(impLines), importantMax)
 	}
 
 	// 注入文本
-	p := memoryPrompt()
-	if !strings.Contains(p, "Tom") || !strings.Contains(p, "咖啡") {
-		t.Errorf("memoryPrompt 缺少记忆: %q", p)
+	p := memoryPrompt(false)
+	if !strings.Contains(p, "Tom") {
+		t.Errorf("memoryPrompt 缺少核心记忆: %q", p)
 	}
 
-	// 删除（先于上限测试，避免被条数淘汰误删）
+	// 删除
 	if n := removeMemory("咖啡"); n != 1 {
 		t.Errorf("removeMemory 应删1条, got %d", n)
 	}
@@ -209,24 +239,17 @@ func TestMemory(t *testing.T) {
 		t.Errorf("removeMemory 不存在应删0, got %d", n)
 	}
 
-	// 条数上限：塞 50 条 → 只剩 40
-	for i := 0; i < 50; i++ {
-		addMemory(fmt.Sprintf("测试条目%02d", i), "note")
+	// 落盘再读回（分隔符格式解析）
+	writeLayerFile("core", coreLines)
+	writeLayerFile("important", impLines)
+	writeTimelineFile()
+	coreLines = readLines(filepath.Join(memDir, "core.txt"))
+	impLines = readLines(filepath.Join(memDir, "important.txt"))
+	timeline = readTimeline(filepath.Join(memDir, "timeline.txt"))
+	if len(timeline) != 1 || timeline[0].Text != "今天去了超市" {
+		t.Errorf("timeline 读回失败: %+v", timeline)
 	}
-	if len(memories) > memMaxEntries {
-		t.Errorf("条数超限: %d > %d", len(memories), memMaxEntries)
-	}
-
-	// 字符上限：塞一条超长记忆 → 最旧被淘汰
-	addMemory("超长记忆："+strings.Repeat("字", memMaxChars), "note")
-	total := 0
-	for _, m := range memories {
-		total += len(m.Text)
-	}
-	if total > memMaxChars {
-		t.Errorf("字符超限: %d > %d", total, memMaxChars)
-	}
-	t.Logf("✅ 记忆模块: 添加/去重/上限/删除 全部通过 (剩 %d 条)", len(memories))
+	t.Logf("✅ 记忆模块v2: 分层/更新/去重/规范化/上限/删除/落盘读回 全部通过")
 }
 
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）

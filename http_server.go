@@ -79,7 +79,10 @@ func aiCheckDanger(cmd string) (bool, string) {
 	if err != nil {
 		return false, "AI 审查失败（" + err.Error() + "），保守拒绝"
 	}
-	if strings.Contains(strings.ToLower(reply), "危险") {
+	// 按开头判断（prompt 要求输出 "安全: 原因" 或 "危险: 原因"）
+	// 不能用 Contains("危险")——AI 会说"无任何危险操作"导致误杀
+	lower := strings.ToLower(strings.TrimSpace(reply))
+	if strings.HasPrefix(lower, "危险") || strings.HasPrefix(lower, "不安全") {
 		return false, strings.TrimSpace(reply)
 	}
 	return true, strings.TrimSpace(reply)
@@ -90,7 +93,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// handleExec POST /exec
+// handleExec POST /exec（安全审查+执行排队串行，handler 等结果）
 func handleExec(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -108,47 +111,65 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "empty cmd", http.StatusBadRequest)
 		return
 	}
-	fmt.Printf("[http] 收到命令: %s\n", cmd)
+	fmt.Printf("[http] 收到命令: %s（排队等待）\n", cmd)
 
-	// 1. 规则层黑名单
-	if p := checkDangerPatterns(cmd); p != "" {
-		fmt.Printf("[http] 规则层拦截: %s\n", p)
-		writeJSON(w, map[string]any{"ok": false, "dangerous": true, "error": "命令命中危险模式: " + p})
-		return
+	type execResult struct {
+		dangerous bool
+		errorMsg  string
+		output    string
 	}
-	if isRMRoot(cmd) {
-		fmt.Printf("[http] 规则层拦截: rm 根目录\n")
-		writeJSON(w, map[string]any{"ok": false, "dangerous": true, "error": "命令命中危险模式: rm 根目录/系统路径"})
-		return
-	}
-	// 2. AI 安全判断
-	safe, reason := aiCheckDanger(cmd)
-	if !safe {
-		fmt.Printf("[http] AI 判定危险: %s\n", reason)
-		writeJSON(w, map[string]any{"ok": false, "dangerous": true, "error": "AI 判定危险: " + reason})
-		return
-	}
-	// 3. 执行（30s 超时，输出截断 8KB）
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	execCmd := cmd
-	if strings.Contains(cmd, "sudo") {
-		// sudo 自动注入密码（sudo_pass.txt 非空时），避免卡密码输入
-		if sp := readSudoPass(); sp != "" {
-			execCmd = fmt.Sprintf("echo %s | sudo -S %s 2>/dev/null", shellQuote(sp), cmd)
+	done := make(chan execResult, 1)
+	enqueue(func() {
+		// 1. 规则层黑名单
+		if p := checkDangerPatterns(cmd); p != "" {
+			fmt.Printf("[http] 规则层拦截: %s\n", p)
+			done <- execResult{dangerous: true, errorMsg: "命令命中危险模式: " + p}
+			return
 		}
+		if isRMRoot(cmd) {
+			fmt.Printf("[http] 规则层拦截: rm 根目录\n")
+			done <- execResult{dangerous: true, errorMsg: "命令命中危险模式: rm 根目录/系统路径"}
+			return
+		}
+		// 2. AI 安全判断
+		safe, reason := aiCheckDanger(cmd)
+		if !safe {
+			fmt.Printf("[http] AI 判定危险: %s\n", reason)
+			done <- execResult{dangerous: true, errorMsg: "AI 判定危险: " + reason}
+			return
+		}
+		// 3. 执行（30s 超时，输出截断 8KB）
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		execCmd := cmd
+		if strings.Contains(cmd, "sudo") {
+			// sudo 自动注入密码（sudo_pass.txt 非空时），避免卡密码输入
+			if sp := readSudoPass(); sp != "" {
+				execCmd = fmt.Sprintf("echo %s | sudo -S %s 2>/dev/null", shellQuote(sp), cmd)
+			}
+		}
+		out, err := exec.CommandContext(ctx, "/bin/bash", "-c", execCmd).CombinedOutput()
+		output := string(out)
+		if len(output) > 8000 {
+			output = output[:8000] + "\n...(输出截断)"
+		}
+		if err != nil {
+			done <- execResult{errorMsg: err.Error(), output: output}
+			return
+		}
+		fmt.Printf("[http] 执行完成 (%d bytes)\n", len(output))
+		done <- execResult{output: output}
+	})
+
+	res := <-done // 等队列任务完成（串行保证一次一个命令）
+	switch {
+	case res.dangerous:
+		writeJSON(w, map[string]any{"ok": false, "dangerous": true, "error": res.errorMsg})
+	case res.errorMsg != "":
+		writeJSON(w, map[string]any{"ok": false, "output": res.output, "error": res.errorMsg})
+	default:
+		writeJSON(w, map[string]any{"ok": true, "output": res.output})
 	}
-	out, err := exec.CommandContext(ctx, "/bin/bash", "-c", execCmd).CombinedOutput()
-	output := string(out)
-	if len(output) > 8000 {
-		output = output[:8000] + "\n...(输出截断)"
-	}
-	if err != nil {
-		writeJSON(w, map[string]any{"ok": false, "output": output, "error": err.Error()})
-		return
-	}
-	fmt.Printf("[http] 执行完成 (%d bytes)\n", len(output))
-	writeJSON(w, map[string]any{"ok": true, "output": output})
 }
 
 // shellQuote 单引号包裹（shell 安全引用，防密码含特殊字符）

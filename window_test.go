@@ -278,6 +278,70 @@ func TestExtractAction(t *testing.T) {
 	t.Log("✅ extractAction: 动作/表情/无标记/无效名 全部通过")
 }
 
+// 11. 对话历史持久化：写盘→清空→读回
+func TestChatHistory(t *testing.T) {
+	dir := t.TempDir()
+	chatHistPath = filepath.Join(dir, "chat_history.txt")
+	chatLogMu.Lock()
+	chatHistory = nil
+	chatLogMu.Unlock()
+
+	appendChat("user", "你好")
+	appendChat("assistant", "你好呀～")
+	appendChat("user", "我明天出差")
+	if len(chatHistory) != 3 {
+		t.Fatalf("appendChat 失败: len=%d", len(chatHistory))
+	}
+	// 模拟重启：清内存重新 load
+	chatLogMu.Lock()
+	chatHistory = nil
+	chatLogMu.Unlock()
+	loadChatHistory(dir)
+	if len(chatHistory) != 3 || chatHistory[0].Role != "user" || chatHistory[2].Content != "我明天出差" {
+		t.Fatalf("loadChatHistory 读回失败: %+v", chatHistory)
+	}
+	// 截断：塞 250 条（共 253 条）→ 只剩 200，最旧被删
+	for i := 0; i < 250; i++ {
+		appendChat("user", fmt.Sprintf("消息%03d", i))
+	}
+	if len(chatHistory) != chatHistMax {
+		t.Errorf("截断失败: len=%d", len(chatHistory))
+	}
+	if chatHistory[0].Content != "消息050" { // 253 条删最旧53条，保留 050~249
+		t.Errorf("截断保留错误: %q", chatHistory[0].Content)
+	}
+	// recentHistory
+	r := recentHistory(3)
+	if len(r) != 3 || r[0].Content != "消息247" {
+		t.Errorf("recentHistory 失败: %+v", r)
+	}
+	t.Log("✅ 对话历史: 追加/持久化读回/截断/recentHistory 全部通过")
+}
+
+// 12. 触发词匹配
+func TestMatchTrigger(t *testing.T) {
+	testInit(t)
+	cases := []struct{ text, want string }{
+		{"开心", "开心"},
+		{"我今天很开心", "开心"},
+		{"拜拜", "眨眼"},
+		{"荡秋千", "单人荡秋千"},
+		{"谢谢", "开心"},
+		{"晚安", "困倦"},
+	}
+	for _, c := range cases {
+		got := matchTrigger(c.text)
+		if got != c.want {
+			t.Errorf("matchTrigger(%q) = %q, want %q", c.text, got, c.want)
+		}
+	}
+	// 不匹配的普通消息
+	if got := matchTrigger("今天天气不错"); got != "" {
+		t.Errorf("普通消息不应触发: %q", got)
+	}
+	t.Log("✅ 触发词: 别名/完整名/普通消息 全部通过")
+}
+
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）
 func TestPlayOnce(t *testing.T) {
 	testInit(t)

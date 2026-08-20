@@ -8,6 +8,7 @@ settings.json
 mood.json
 memory.json
 memory/
+chat_history.txt
 sudo_pass.txt
 
 # Python

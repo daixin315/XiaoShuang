@@ -198,24 +198,30 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "reply": reply})
 		return
 	}
+	// 触发词表演（秒响应，不走 AI）
+	if act := matchTrigger(text); act != "" {
+		if _, ok := actionFiles[act]; ok {
+			playAction(act, globalPlayer)
+		} else {
+			playExpr(act, globalPlayer)
+		}
+		writeJSON(w, map[string]any{"ok": true, "reply": "🎭 来啦～"})
+		return
+	}
 	// 忙时提示
 	if isTaskBusy() {
 		writeJSON(w, map[string]any{"ok": false, "busy": true, "reply": "🫥 小双正在忙，等我一下下～"})
 		return
 	}
-	// 记录用户消息（窗口同步显示）
-	chatLogMu.Lock()
-	chatHistory = append(chatHistory, ChatMessage{Role: "user", Content: text})
-	chatLogMu.Unlock()
+	// 记录用户消息（窗口同步显示 + 持久化）
+	appendChat("user", text)
 	globalAddMsg("user", text)
 	setMoodNow("think", globalPlayer)
 	scheduleSummarize() // 转达也算对话活跃
 
 	done := make(chan string, 1)
 	enqueue(func() {
-		chatLogMu.Lock()
-		h := append([]ChatMessage{}, chatHistory...)
-		chatLogMu.Unlock()
+		h := recentHistory(chatAICtxMax)
 		reply, err := chatWithAI(h)
 		isErr := err != nil
 		if isErr {
@@ -226,9 +232,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		if !isErr && actName != "" {
 			playExtractedAction(actName, globalPlayer)
 		}
-		chatLogMu.Lock()
-		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: cleanReply})
-		chatLogMu.Unlock()
+		appendChat("assistant", cleanReply)
 		globalAddMsg("assistant", cleanReply)
 		if isErr {
 			setMoodNow("sad", globalPlayer)
@@ -278,6 +282,39 @@ func handleAction(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "no such action/expr: "+name, http.StatusNotFound)
 }
 
+// handleMood POST /mood  {"emotion":"think"} —— 外部(Hermes)设置情绪，小双播放对应表情
+// emotion 支持中文(思考/开心)或英文(think/happy)；配合 /exec 实现"我干活她思考"
+func handleMood(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Emotion string `json:"emotion"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	emotion := strings.TrimSpace(req.Emotion)
+	if _, ok := exprFiles[emotion]; !ok {
+		if zh, ok := emotionAlias[emotion]; ok {
+			emotion = zh // 英文别名 → 中文表情
+		}
+	}
+	if _, ok := exprFiles[emotion]; !ok {
+		http.Error(w, "unknown emotion: "+req.Emotion, http.StatusBadRequest)
+		return
+	}
+	if globalPlayer == nil {
+		http.Error(w, "player not ready", http.StatusServiceUnavailable)
+		return
+	}
+	fmt.Printf("[http] 设置情绪: %s\n", emotion)
+	playExpr(emotion, globalPlayer) // 循环播放对应表情
+	writeJSON(w, map[string]any{"ok": true, "emotion": emotion})
+}
+
 // shellQuote 单引号包裹（shell 安全引用，防密码含特殊字符）
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
@@ -320,9 +357,10 @@ func startHTTPServer() {
 	mux.HandleFunc("/exec", handleExec)
 	mux.HandleFunc("/chat", handleChat)
 	mux.HandleFunc("/action", handleAction)
+	mux.HandleFunc("/mood", handleMood)
 	mux.HandleFunc("/status", handleStatus)
 	srv := &http.Server{Addr: httpAddr, Handler: mux}
-	fmt.Printf("[http] 接口已启动: http://%s/exec /chat /action /status\n", httpAddr)
+	fmt.Printf("[http] 接口已启动: http://%s/exec /chat /action /mood /status\n", httpAddr)
 	if err := srv.ListenAndServe(); err != nil {
 		fmt.Printf("[http] 服务退出: %v\n", err)
 	}

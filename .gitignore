@@ -7,6 +7,7 @@
 settings.json
 mood.json
 memory.json
+memory/
 sudo_pass.txt
 
 # Python

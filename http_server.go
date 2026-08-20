@@ -149,14 +149,6 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Printf("[http] 执行完成 (%d bytes)\n", len(output))
 	writeJSON(w, map[string]any{"ok": true, "output": output})
-
-	// 对话区告知用户小双干了什么
-	fyneDo(func() {
-		if globalAddMsg != nil {
-			msg := "🖥️ 刚帮主人执行了命令：`" + cmd + "`\n" + truncateRune(output, 150)
-			globalAddMsg("assistant", msg)
-		}
-	})
 }
 
 // shellQuote 单引号包裹（shell 安全引用，防密码含特殊字符）

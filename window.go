@@ -26,6 +26,9 @@ var globalPlayer *VideoPlayer
 // 全局视频显示对象（playMainStatic 回主图用）
 var globalVideoImg *canvas.Image
 
+// globalAddMsg 全局对话气泡函数（runMainWindow 赋值；http 接口等外部模块用）
+var globalAddMsg func(role, text string)
+
 // 测试句柄（fyne test 驱动 UI 用；生产无影响）
 var (
 	testInput   *widget.Entry
@@ -138,21 +141,24 @@ func runMainWindow(exeDir string) {
 	bubbleScroll.SetMinSize(fyne.NewSize(480, 75))
 
 	addMsg := func(role, text string) {
-		fyneDo(func() {
-			prefix := "🧑 你"
-			if role == "assistant" {
-				prefix = "🐟 小双"
-			}
-			// 半透明气泡
-			bg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 30, A: 200})
-			content := container.NewVBox(
-				widget.NewLabelWithStyle(prefix, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-				widget.NewLabel(text),
-			)
-			bubble := container.NewStack(bg, container.NewPadded(content))
-			bubbleBox.Add(bubble)
-			bubbleScroll.ScrollToBottom()
-		})
+		globalAddMsg = func(r, t string) {
+			fyneDo(func() {
+				prefix := "🧑 你"
+				if r == "assistant" {
+					prefix = "🐟 小双"
+				}
+				// 半透明气泡
+				bg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 30, A: 200})
+				content := container.NewVBox(
+					widget.NewLabelWithStyle(prefix, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+					widget.NewLabel(t),
+				)
+				bubble := container.NewStack(bg, container.NewPadded(content))
+				bubbleBox.Add(bubble)
+				bubbleScroll.ScrollToBottom()
+			})
+		}
+		globalAddMsg(role, text)
 	}
 
 	// ===== 输入行 =====
@@ -260,6 +266,7 @@ func runMainWindow(exeDir string) {
 		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
 	)
 	w.SetContent(root)
+	go startHTTPServer() // 本地 HTTP 命令接口（127.0.0.1:8721）
 	w.ShowAndRun()
 }
 

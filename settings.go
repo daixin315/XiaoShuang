@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -22,6 +23,15 @@ type Settings struct {
 	RecordDev string `json:"record_dev"` // 录音设备（ffmpeg 参数）
 }
 
+// readSudoPass 读 sudo 密码（独立文件 sudo_pass.txt，gitignore，避免被 saveSettings 覆盖）
+func readSudoPass() string {
+	data, err := os.ReadFile(filepath.Join(exeDirOf(), "sudo_pass.txt"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 var (
 	settings     Settings
 	settingsMu   sync.RWMutex
@@ -30,16 +40,16 @@ var (
 
 func defaultSettings() Settings {
 	return Settings{
-		BaseURL:  "https://dashscope.aliyuncs.com/compatible-mode/v1",
-		APIKey:   "",
-		Model:    "qwen-plus",
-		System:   "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。",
-		STTMode:  "local",
-		STTModel: "medium",
-		STTCmd:   "python3 scripts/whisper_stt.py", // 相对项目目录，依赖见 requirements.txt
-		TTSMode:  "edge",
-		TTSVoice: "zh-CN-XiaoxiaoNeural",
-		TTSBin:   "edge-tts", // PATH 中的 edge-tts
+		BaseURL:   "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		APIKey:    "",
+		Model:     "qwen-plus",
+		System:    "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。",
+		STTMode:   "local",
+		STTModel:  "medium",
+		STTCmd:    "python3 scripts/whisper_stt.py", // 相对项目目录，依赖见 requirements.txt
+		TTSMode:   "edge",
+		TTSVoice:  "zh-CN-XiaoxiaoNeural",
+		TTSBin:    "edge-tts", // PATH 中的 edge-tts
 		RecordDev: "",
 	}
 }

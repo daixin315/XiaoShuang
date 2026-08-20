@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -161,6 +162,24 @@ func TestMenuDismissOnOutsideTap(t *testing.T) {
 	} else {
 		t.Log("✅ 点击菜单外区域菜单已关闭")
 	}
+}
+
+// 8. 人性化错误提示（API key 未配置等场景）
+func TestFriendlyChatError(t *testing.T) {
+	cases := []struct{ err, want string }{
+		{"api_not_configured", "设置"},
+		{"API 401: InvalidApiKey", "Key"},
+		{"API 404: model not found", "模型"},
+		{"API 429: rate limit", "忙不过来"},
+		{"context deadline exceeded (Client.Timeout)", "网络"},
+	}
+	for _, c := range cases {
+		got := friendlyChatError(fmt.Errorf("%s", c.err))
+		if !strings.Contains(got, c.want) {
+			t.Errorf("friendlyChatError(%q) = %q, want 包含 %q", c.err, got, c.want)
+		}
+	}
+	t.Log("✅ 人性化错误提示覆盖：未配置/401/404/429/超时")
 }
 
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）

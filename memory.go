@@ -366,7 +366,7 @@ func tickMemories() {
 	}
 	_ = weekKeep // week 段无需落盘（timeline 已按 24h 保留，week 段只是概念分区）
 	if len(far) > 0 {
-		go judgeFar(far)
+		enqueue(func() { judgeFar(far) }) // 排队串行，不并发跑 AI
 	}
 }
 

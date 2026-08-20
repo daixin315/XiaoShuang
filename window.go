@@ -59,7 +59,7 @@ func scheduleSummarize() {
 		chatLogMu.Unlock()
 		if len(newMsgs) >= 2 { // 至少一问一答才算一轮
 			fmt.Printf("[memory] 对话静默5分钟，总结 %d 条新消息\n", len(newMsgs))
-			summarizeForMemory(newMsgs)
+			enqueue(func() { summarizeForMemory(newMsgs) }) // 排队串行，不和主对话抢
 		}
 	})
 }
@@ -266,6 +266,7 @@ func runMainWindow(exeDir string) {
 		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
 	)
 	w.SetContent(root)
+	startTaskWorker()    // 单线程任务队列（聊天/命令/总结串行）
 	go startHTTPServer() // 本地 HTTP 命令接口（127.0.0.1:8721）
 	w.ShowAndRun()
 }
@@ -370,7 +371,15 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 	setMoodNow("think", player)
 	scheduleSummarize() // 用户发言 → 重置 5 分钟静默计时器
 
-	go func() {
+	// 忙时提示：小双正在干活（回复/执行命令），消息不入队，请稍后重发
+	if isTaskBusy() {
+		addMsg("assistant", "🫥 小双正在忙，等我一下下～")
+		setMoodNow("idle", player)
+		return
+	}
+
+	// AI 回复排队（单线程串行：一次只处理一条消息）
+	enqueue(func() {
 		chatLogMu.Lock()
 		h := append([]ChatMessage{}, chatHistory...)
 		chatLogMu.Unlock()
@@ -388,7 +397,7 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		} else {
 			setMoodNow("sad", player)
 		}
-	}()
+	})
 }
 
 // setMoodNow 写 mood.json + 播放对应表情视频（英文或中文情绪名都支持）
@@ -475,30 +484,39 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 		scheduleSummarize() // 语音发言也算对话活跃
 
 		setMoodNow("think", player)
-		chatLogMu.Lock()
-		h := append([]ChatMessage{}, chatHistory...)
-		chatLogMu.Unlock()
-		reply, err := chatWithAI(h)
-		isErr := err != nil
-		if isErr {
-			reply = friendlyChatError(err)
-		}
-		addMsg("assistant", reply)
-		chatLogMu.Lock()
-		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
-		chatLogMu.Unlock()
-		if isErr {
-			setMoodNow("sad", player)
+		// 忙时提示：小双正在干活，语音消息不入队
+		if isTaskBusy() {
+			addMsg("assistant", "🫥 小双正在忙，等我一下下～")
+			setMoodNow("idle", player)
 			return
 		}
-		setMoodNow("happy", player)
-
-		if !strings.HasPrefix(reply, "⚠️") {
-			mp3 := strings.TrimSuffix(f, ".wav") + ".mp3"
-			if err := ttsEdge(reply, mp3); err == nil {
-				playAudio(mp3)
+		// AI 回复排队串行（不阻塞录音流程，但回复和主对话互斥）
+		enqueue(func() {
+			chatLogMu.Lock()
+			h := append([]ChatMessage{}, chatHistory...)
+			chatLogMu.Unlock()
+			reply, err := chatWithAI(h)
+			isErr := err != nil
+			if isErr {
+				reply = friendlyChatError(err)
 			}
-		}
+			addMsg("assistant", reply)
+			chatLogMu.Lock()
+			chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
+			chatLogMu.Unlock()
+			if isErr {
+				setMoodNow("sad", player)
+				return
+			}
+			setMoodNow("happy", player)
+
+			if !strings.HasPrefix(reply, "⚠️") {
+				mp3 := strings.TrimSuffix(f, ".wav") + ".mp3"
+				if err := ttsEdge(reply, mp3); err == nil {
+					playAudio(mp3)
+				}
+			}
+		})
 	}()
 }
 

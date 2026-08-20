@@ -35,8 +35,8 @@ func chatWithAI(history []ChatMessage) (string, error) {
 	s := settings
 	settingsMu.RUnlock()
 
-	if s.BaseURL == "" || s.Model == "" {
-		return "", fmt.Errorf("未配置 API（请在设置里填写 base_url / api_key / model）")
+	if s.BaseURL == "" || s.Model == "" || s.APIKey == "" {
+		return "", fmt.Errorf("api_not_configured")
 	}
 
 	messages := []ChatMessage{}

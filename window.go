@@ -231,8 +231,8 @@ func runMainWindow(exeDir string) {
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
 	root := container.New(fixedChatLayout{chatH: 75},
-		videoImg,                        // 0: 视频固定顶部
-		bubbleScroll,                    // 1: 对话区固定 75px（约1-2行）
+		videoImg,                              // 0: 视频固定顶部
+		bubbleScroll,                          // 1: 对话区固定 75px（约1-2行）
 		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
 	)
 	w.SetContent(root)
@@ -278,6 +278,27 @@ func loadImageFile(path string) image.Image {
 	return img
 }
 
+// friendlyChatError 把 API/网络错误翻译成小双的口吻（人性化提醒）
+func friendlyChatError(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "api_not_configured"):
+		return "我还不会说话呢～请在 ⚙️ 设置里填好 API 地址和 Key，我就能陪你聊天啦 🐟"
+	case strings.Contains(msg, "401"), strings.Contains(msg, "InvalidApiKey"), strings.Contains(msg, "invalid api key"):
+		return "主人～我的 API Key 好像不对或过期了，去 ⚙️ 设置里检查一下好吗 🙏"
+	case strings.Contains(msg, "403"):
+		return "我被拒绝访问了…去 ⚙️ 设置里确认一下 Key 的权限吧 😢"
+	case strings.Contains(msg, "404"):
+		return "我找不到这个模型…去 ⚙️ 设置里看看模型名写对了没 🤔"
+	case strings.Contains(msg, "429"):
+		return "我有点忙不过来（请求太多啦），稍等一下再试好不好～"
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "Timeout"), strings.Contains(msg, "EOF"), strings.Contains(msg, "connection refused"):
+		return "网络好像不太顺畅，我连不上…过一会儿再试一次吧 😅"
+	default:
+		return "哎呀，我刚刚卡住了（" + msg + "），再试一次？"
+	}
+}
+
 // sendChat 发送文字对话（播放器联动表情）
 func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 	chatLogMu.Lock()
@@ -291,14 +312,15 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		h := append([]ChatMessage{}, chatHistory...)
 		chatLogMu.Unlock()
 		reply, err := chatWithAI(h)
-		if err != nil {
-			reply = "⚠️ " + err.Error()
+		isErr := err != nil
+		if isErr {
+			reply = friendlyChatError(err)
 		}
 		addMsg("assistant", reply)
 		chatLogMu.Lock()
 		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
 		chatLogMu.Unlock()
-		if !strings.HasPrefix(reply, "⚠️") {
+		if !isErr {
 			setMoodNow("happy", player)
 		} else {
 			setMoodNow("sad", player)
@@ -393,13 +415,18 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 		h := append([]ChatMessage{}, chatHistory...)
 		chatLogMu.Unlock()
 		reply, err := chatWithAI(h)
-		if err != nil {
-			reply = "⚠️ " + err.Error()
+		isErr := err != nil
+		if isErr {
+			reply = friendlyChatError(err)
 		}
 		addMsg("assistant", reply)
 		chatLogMu.Lock()
 		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
 		chatLogMu.Unlock()
+		if isErr {
+			setMoodNow("sad", player)
+			return
+		}
 		setMoodNow("happy", player)
 
 		if !strings.HasPrefix(reply, "⚠️") {

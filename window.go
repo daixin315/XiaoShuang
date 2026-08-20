@@ -85,6 +85,7 @@ var useTestApp bool
 // runMainWindow 一体化窗口（视频 + 浮动对话 + 输入 + 底部栏）
 func runMainWindow(exeDir string) {
 	loadSettings(exeDir)
+	loadMemory(exeDir)
 	scanResources()
 
 	var a fyne.App
@@ -299,8 +300,38 @@ func friendlyChatError(err error) string {
 	}
 }
 
-// sendChat 发送文字对话（播放器联动表情）
+// sendChat 发送文字对话（播放器联动表情 + 记忆命令 + 自动总结）
 func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
+	trimmed := strings.TrimSpace(text)
+
+	// ===== 记忆命令 =====
+	switch {
+	case strings.HasPrefix(trimmed, "/记 "):
+		content := strings.TrimSpace(trimmed[len("/记 "):])
+		if content == "" {
+			addMsg("assistant", "要记住什么呀？格式：/记 内容")
+			return
+		}
+		addMemory(content, "user")
+		addMsg("assistant", "📝 记住啦：「"+content+"」")
+		return
+	case trimmed == "/记忆":
+		addMsg("assistant", listMemory())
+		return
+	case strings.HasPrefix(trimmed, "/忘 "):
+		kw := strings.TrimSpace(trimmed[len("/忘 "):])
+		if kw == "" {
+			addMsg("assistant", "想忘掉什么？格式：/忘 关键词")
+			return
+		}
+		if n := removeMemory(kw); n > 0 {
+			addMsg("assistant", fmt.Sprintf("🗑️ 忘掉了 %d 条相关记忆", n))
+		} else {
+			addMsg("assistant", "没有找到包含「"+kw+"」的记忆")
+		}
+		return
+	}
+
 	chatLogMu.Lock()
 	chatHistory = append(chatHistory, ChatMessage{Role: "user", Content: text})
 	chatLogMu.Unlock()
@@ -322,6 +353,10 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		chatLogMu.Unlock()
 		if !isErr {
 			setMoodNow("happy", player)
+			chatLogMu.Lock()
+			snap := append([]ChatMessage{}, chatHistory...)
+			chatLogMu.Unlock()
+			go summarizeForMemory(snap) // 后台自动提炼记忆（静默）
 		} else {
 			setMoodNow("sad", player)
 		}

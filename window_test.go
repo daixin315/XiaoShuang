@@ -182,6 +182,53 @@ func TestFriendlyChatError(t *testing.T) {
 	t.Log("✅ 人性化错误提示覆盖：未配置/401/404/429/超时")
 }
 
+// 9. 记忆模块：增删/去重/上限淘汰/注入文本
+func TestMemory(t *testing.T) {
+	memoryPath = filepath.Join(t.TempDir(), "memory.json")
+	memories = nil
+
+	// 添加 + 去重
+	addMemory("用户叫Tom", "user")
+	addMemory("用户叫Tom", "user") // 重复跳过
+	addMemory("用户喜欢喝咖啡", "user")
+	if len(memories) != 2 {
+		t.Fatalf("去重失败: len=%d", len(memories))
+	}
+
+	// 注入文本
+	p := memoryPrompt()
+	if !strings.Contains(p, "Tom") || !strings.Contains(p, "咖啡") {
+		t.Errorf("memoryPrompt 缺少记忆: %q", p)
+	}
+
+	// 删除（先于上限测试，避免被条数淘汰误删）
+	if n := removeMemory("咖啡"); n != 1 {
+		t.Errorf("removeMemory 应删1条, got %d", n)
+	}
+	if n := removeMemory("不存在关键词xyz"); n != 0 {
+		t.Errorf("removeMemory 不存在应删0, got %d", n)
+	}
+
+	// 条数上限：塞 50 条 → 只剩 40
+	for i := 0; i < 50; i++ {
+		addMemory(fmt.Sprintf("测试条目%02d", i), "note")
+	}
+	if len(memories) > memMaxEntries {
+		t.Errorf("条数超限: %d > %d", len(memories), memMaxEntries)
+	}
+
+	// 字符上限：塞一条超长记忆 → 最旧被淘汰
+	addMemory("超长记忆："+strings.Repeat("字", memMaxChars), "note")
+	total := 0
+	for _, m := range memories {
+		total += len(m.Text)
+	}
+	if total > memMaxChars {
+		t.Errorf("字符超限: %d > %d", total, memMaxChars)
+	}
+	t.Logf("✅ 记忆模块: 添加/去重/上限/删除 全部通过 (剩 %d 条)", len(memories))
+}
+
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）
 func TestPlayOnce(t *testing.T) {
 	testInit(t)

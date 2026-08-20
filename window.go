@@ -140,24 +140,25 @@ func runMainWindow(exeDir string) {
 	bubbleScroll := container.NewVScroll(bubbleBox)
 	bubbleScroll.SetMinSize(fyne.NewSize(480, 75))
 
+	// 全局气泡函数（http /chat 转达等外部模块用；定义时立即赋值，不能等首次调用）
+	globalAddMsg = func(r, t string) {
+		fyneDo(func() {
+			prefix := "🧑 你"
+			if r == "assistant" {
+				prefix = "🐟 小双"
+			}
+			// 半透明气泡
+			bg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 30, A: 200})
+			content := container.NewVBox(
+				widget.NewLabelWithStyle(prefix, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+				widget.NewLabel(t),
+			)
+			bubble := container.NewStack(bg, container.NewPadded(content))
+			bubbleBox.Add(bubble)
+			bubbleScroll.ScrollToBottom()
+		})
+	}
 	addMsg := func(role, text string) {
-		globalAddMsg = func(r, t string) {
-			fyneDo(func() {
-				prefix := "🧑 你"
-				if r == "assistant" {
-					prefix = "🐟 小双"
-				}
-				// 半透明气泡
-				bg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 30, A: 200})
-				content := container.NewVBox(
-					widget.NewLabelWithStyle(prefix, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-					widget.NewLabel(t),
-				)
-				bubble := container.NewStack(bg, container.NewPadded(content))
-				bubbleBox.Add(bubble)
-				bubbleScroll.ScrollToBottom()
-			})
-		}
 		globalAddMsg(role, text)
 	}
 
@@ -331,36 +332,40 @@ func friendlyChatError(err error) string {
 	}
 }
 
+// handleMemoryCommand 处理记忆命令，返回(回复文本, 是否已处理)
+// 窗口输入和 HTTP /chat 共用
+func handleMemoryCommand(text string) (string, bool) {
+	switch {
+	case strings.HasPrefix(text, "/记 "):
+		content := strings.TrimSpace(text[len("/记 "):])
+		if content == "" {
+			return "要记住什么呀？格式：/记 内容", true
+		}
+		addMem(content, "important")
+		return "📝 记住啦：「" + content + "」（已放入重要记忆）", true
+	case text == "/记忆":
+		return listMemory(), true
+	case strings.HasPrefix(text, "/忘 "):
+		kw := strings.TrimSpace(text[len("/忘 "):])
+		if kw == "" {
+			return "想忘掉什么？格式：/忘 关键词", true
+		}
+		if n := removeMemory(kw); n > 0 {
+			return fmt.Sprintf("🗑️ 忘掉了 %d 条相关记忆", n), true
+		}
+		return "没有找到包含「" + kw + "」的记忆", true
+	}
+	return "", false
+}
+
 // sendChat 发送文字对话（播放器联动表情 + 记忆命令 + 自动总结）
 func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 	trimmed := strings.TrimSpace(text)
 	maybeTick() // 时间流转：单天→一周→更远（每小时最多一次）
 
 	// ===== 记忆命令 =====
-	switch {
-	case strings.HasPrefix(trimmed, "/记 "):
-		content := strings.TrimSpace(trimmed[len("/记 "):])
-		if content == "" {
-			addMsg("assistant", "要记住什么呀？格式：/记 内容")
-			return
-		}
-		addMem(content, "important")
-		addMsg("assistant", "📝 记住啦：「"+content+"」（已放入重要记忆）")
-		return
-	case trimmed == "/记忆":
-		addMsg("assistant", listMemory())
-		return
-	case strings.HasPrefix(trimmed, "/忘 "):
-		kw := strings.TrimSpace(trimmed[len("/忘 "):])
-		if kw == "" {
-			addMsg("assistant", "想忘掉什么？格式：/忘 关键词")
-			return
-		}
-		if n := removeMemory(kw); n > 0 {
-			addMsg("assistant", fmt.Sprintf("🗑️ 忘掉了 %d 条相关记忆", n))
-		} else {
-			addMsg("assistant", "没有找到包含「"+kw+"」的记忆")
-		}
+	if reply, handled := handleMemoryCommand(trimmed); handled {
+		addMsg("assistant", reply)
 		return
 	}
 

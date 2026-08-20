@@ -172,6 +172,70 @@ func handleExec(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleChat POST /chat  {"text":"消息内容"} —— 外部(Hermes)代用户转达消息
+// 复用主对话链路：记录历史+窗口气泡+表情+5分钟总结；回复通过 HTTP 返回
+func handleChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		http.Error(w, "empty text", http.StatusBadRequest)
+		return
+	}
+	fmt.Printf("[http] 收到转达消息: %s\n", text)
+
+	// 记忆命令直接处理（不需 AI）
+	if reply, handled := handleMemoryCommand(text); handled {
+		writeJSON(w, map[string]any{"ok": true, "reply": reply})
+		return
+	}
+	// 忙时提示
+	if isTaskBusy() {
+		writeJSON(w, map[string]any{"ok": false, "busy": true, "reply": "🫥 小双正在忙，等我一下下～"})
+		return
+	}
+	// 记录用户消息（窗口同步显示）
+	chatLogMu.Lock()
+	chatHistory = append(chatHistory, ChatMessage{Role: "user", Content: text})
+	chatLogMu.Unlock()
+	globalAddMsg("user", text)
+	setMoodNow("think", globalPlayer)
+	scheduleSummarize() // 转达也算对话活跃
+
+	done := make(chan string, 1)
+	enqueue(func() {
+		chatLogMu.Lock()
+		h := append([]ChatMessage{}, chatHistory...)
+		chatLogMu.Unlock()
+		reply, err := chatWithAI(h)
+		isErr := err != nil
+		if isErr {
+			reply = friendlyChatError(err)
+		}
+		chatLogMu.Lock()
+		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
+		chatLogMu.Unlock()
+		globalAddMsg("assistant", reply)
+		if isErr {
+			setMoodNow("sad", globalPlayer)
+		} else {
+			setMoodNow("happy", globalPlayer)
+		}
+		done <- reply
+	})
+	reply := <-done
+	writeJSON(w, map[string]any{"ok": true, "reply": reply})
+}
+
 // shellQuote 单引号包裹（shell 安全引用，防密码含特殊字符）
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
@@ -212,9 +276,10 @@ func truncateRune(s string, n int) string {
 func startHTTPServer() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/exec", handleExec)
+	mux.HandleFunc("/chat", handleChat)
 	mux.HandleFunc("/status", handleStatus)
 	srv := &http.Server{Addr: httpAddr, Handler: mux}
-	fmt.Printf("[http] 命令接口已启动: http://%s/exec\n", httpAddr)
+	fmt.Printf("[http] 接口已启动: http://%s/exec /chat /status\n", httpAddr)
 	if err := srv.ListenAndServe(); err != nil {
 		fmt.Printf("[http] 服务退出: %v\n", err)
 	}

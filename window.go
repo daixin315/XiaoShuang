@@ -117,6 +117,7 @@ func runMainWindow(exeDir string) {
 	loadSettings(exeDir)
 	loadMemory(exeDir)
 	loadChatHistory(exeDir) // 对话历史持久化（重启接着聊）
+	loadTodos(exeDir)       // 待办清单
 	scanResources()
 	buildActions() // 动作记忆区：从资源扫描生成（在 scanResources 之后）
 
@@ -273,11 +274,13 @@ func runMainWindow(exeDir string) {
 		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
 	)
 	w.SetContent(root)
-	startTaskWorker() // 单线程任务队列（聊天/命令/总结串行）
-	go startHTTPServer() // 本地 HTTP 命令接口（127.0.0.1:8721）
+	startTaskWorker()     // 单线程任务队列（聊天/命令/总结串行）
+	go startHTTPServer()  // 本地 HTTP 命令接口（127.0.0.1:8721）
 	go startIdleActions() // 空闲随机小动作
 	go startRecallTimer() // 定时回忆
-	go startTray(w) // 系统托盘（Linux 需 appindicator）
+	go startTodoLoop()    // 待办检查（到点提醒）
+	go startWakeLoop()    // 语音唤醒（喊"小双"）
+	go startTray(w)       // 系统托盘（Linux 需 appindicator）
 
 	// ===== 关窗保护：点 X → 隐藏到托盘（不退出）；托盘右键菜单可退出 =====
 	w.SetCloseIntercept(func() {
@@ -384,6 +387,12 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		return
 	}
 
+	// ===== 待办命令（记一下/提醒我 → AI 解析时间）=====
+	if reply, handled := handleTodoCommand(trimmed); handled {
+		addMsg("assistant", reply)
+		return
+	}
+
 	// ===== 触发词表演（秒响应，不走 AI）=====
 	if act := matchTrigger(trimmed); act != "" {
 		if _, ok := actionFiles[act]; ok {
@@ -394,6 +403,9 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		addMsg("assistant", "🎭 来啦～")
 		return
 	}
+
+	// ===== 情绪识别（伤心/开心 → 自动换表情）=====
+	applyMoodReaction(detectMood(trimmed), player)
 
 	// 记录用户消息（持久化）
 	appendChat("user", text)

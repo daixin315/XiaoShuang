@@ -73,14 +73,9 @@ func recallOnce() {
 // 消息包含表情/动作名或别名 → 本地直接播放（秒响应，不走 AI）
 
 // triggerAliases 常用别名 → 实际表演名
+// 注意：情绪类词（开心/难过/哭/累等）不放这里，交给 detectMood 情绪识别（AI 会安慰）
 var triggerAliases = map[string]string{
-	"开心": "开心", "高兴": "开心", "快乐": "开心", "嘻嘻": "开心", "谢谢": "开心",
-	"难过": "伤心", "伤心": "伤心", "哭": "伤心", "委屈": "委屈",
-	"生气": "生气", "气死": "生气", "愤怒": "生气",
-	"拜拜": "眨眼", "再见": "眨眼", "晚安": "困倦", "困": "困倦", "累": "困倦",
-	"惊讶": "惊讶", "哇": "惊讶", "吓": "害怕", "怕": "害怕",
-	"思考": "思考", "想": "思考", "发呆": "发呆", "无语": "无语", "害羞": "害羞",
-	"可爱": "可爱", "兴奋": "兴奋", "得意": "得意", "微笑": "微笑", "忧愁": "忧愁",
+	"拜拜": "眨眼", "再见": "眨眼", "晚安": "困倦",
 	"秋千": "单人荡秋千", "荡秋千": "单人荡秋千", "摇": "单人荡秋千",
 	"跳舞": "蝴蝶围圈", "蝴蝶": "蝴蝶围圈", "飞": "蝴蝶围圈",
 	"锦鲤": "河边锦鲤", "鱼": "河边锦鲤", "摸鱼": "河边锦鲤",
@@ -91,19 +86,15 @@ var triggerAliases = map[string]string{
 }
 
 // matchTrigger 匹配触发词，返回要表演的名字（找不到返回空串）
+// 注意：表情名不做完整名匹配——情绪词（开心/难过等）走 detectMood，避免误触发
 func matchTrigger(text string) string {
 	for alias, name := range triggerAliases {
 		if strings.Contains(text, alias) {
 			return name
 		}
 	}
-	// 完整名匹配（表情/动作）
+	// 完整名匹配（仅动作，表情归情绪识别）
 	for _, n := range actionNames {
-		if strings.Contains(text, n) {
-			return n
-		}
-	}
-	for _, n := range exprNames {
 		if strings.Contains(text, n) {
 			return n
 		}

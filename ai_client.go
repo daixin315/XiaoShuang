@@ -72,7 +72,11 @@ func chatWithAI(history []ChatMessage) (string, error) {
 
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("API %d: %s", resp.StatusCode, string(data)[:300])
+		msg := string(data)
+		if len(msg) > 300 {
+			msg = msg[:300]
+		}
+		return "", fmt.Errorf("API %d: %s", resp.StatusCode, msg)
 	}
 
 	var out struct {

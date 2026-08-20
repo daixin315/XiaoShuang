@@ -511,25 +511,14 @@ func newHoldButton(label string, onPress, onRelease func()) *holdButton {
 
 func (b *holdButton) CreateRenderer() fyne.WidgetRenderer {
 	btn := widget.NewButton(b.label, nil)
-	btn.Disable()
+	// 不能 Disable()：灰了之后用户以为不可用；按住逻辑靠 MouseDown/MouseUp 驱动
 	return widget.NewSimpleRenderer(btn)
 }
 
 var holdPressed bool
 
-func (b *holdButton) Tapped(_ *fyne.PointEvent) {
-	if !holdPressed {
-		holdPressed = true
-		if b.onPress != nil {
-			b.onPress()
-		}
-	} else {
-		holdPressed = false
-		if b.onRelase != nil {
-			b.onRelase()
-		}
-	}
-}
+// Tapped 空实现：按住逻辑由 MouseDown/MouseUp 驱动，避免点击松开时双触发 onRelase
+func (b *holdButton) Tapped(_ *fyne.PointEvent) {}
 
 func (b *holdButton) MouseDown(_ *desktop.MouseEvent) {
 	if !holdPressed {

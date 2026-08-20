@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -18,7 +19,11 @@ func runCmd(name string, args ...string) (string, error) {
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%v: %s", err, buf.String()[:200])
+		msg := buf.String()
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		return "", fmt.Errorf("%v: %s", err, msg)
 	}
 	return buf.String(), nil
 }
@@ -126,7 +131,12 @@ func sttLocal(audioPath string) (string, error) {
 	if len(cmd) == 0 {
 		return "", fmt.Errorf("未配置 STT 命令")
 	}
-	args := append(cmd[1:], audioPath, s.STTModel)
+	// 相对路径 scripts/whisper_stt.py → 绝对路径（systemd 启动时 cwd 不是项目目录）
+	script := cmd[1]
+	if strings.HasPrefix(script, "scripts/") {
+		script = filepath.Join(exeDirOf(), script)
+	}
+	args := append([]string{script}, audioPath, s.STTModel)
 	out, err := runCmd(cmd[0], args...)
 	if err != nil {
 		return "", fmt.Errorf("STT 失败: %v", err)

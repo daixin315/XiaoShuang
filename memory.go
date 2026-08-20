@@ -484,21 +484,24 @@ func extractAction(reply string) (string, string) {
 	var keep []string
 	action := ""
 	for _, l := range lines {
-		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "[表演]") {
-			name := strings.TrimSpace(strings.TrimPrefix(t, "[表演]"))
+		// 行内也可能出现 [表演]（AI 常拼在正文末尾），从标记处截断
+		if idx := strings.Index(l, "[表演]"); idx >= 0 {
+			before := strings.TrimSpace(l[:idx])
+			name := strings.TrimSpace(strings.TrimPrefix(l[idx:], "[表演]"))
 			// AI 可能输出 "动作:河边戏水" / "表情:开心"（带前缀），剥离
 			name = strings.TrimPrefix(name, "动作:")
 			name = strings.TrimPrefix(name, "表情:")
 			name = strings.TrimSpace(name)
 			if _, ok := actionFiles[name]; ok {
 				action = name
-				continue
-			}
-			if _, ok := exprFiles[name]; ok {
+			} else if _, ok := exprFiles[name]; ok {
 				action = name
-				continue
 			}
+			// 标记前有正文则保留（名字无效也一样保留正文，只是不播放）
+			if before != "" {
+				keep = append(keep, before)
+			}
+			continue
 		}
 		keep = append(keep, l)
 	}

@@ -270,10 +270,10 @@ func TestExtractAction(t *testing.T) {
 	if act != "" || clean != "今天天气不错" {
 		t.Errorf("无标记解析失败: clean=%q act=%q", clean, act)
 	}
-	// 无效名字（不在列表里）→ 保留原文
+	// 无效名字（AI 编造，不在列表里）→ 移除该行不播放，回复不留痕迹
 	clean, act = extractAction("嘿嘿\n[表演]不存在的东西")
-	if act != "" || !strings.Contains(clean, "不存在") {
-		t.Errorf("无效名字应保留: clean=%q act=%q", clean, act)
+	if act != "" || strings.Contains(clean, "不存在") {
+		t.Errorf("无效名字应移除: clean=%q act=%q", clean, act)
 	}
 	t.Log("✅ extractAction: 动作/表情/无标记/无效名 全部通过")
 }
@@ -318,16 +318,15 @@ func TestChatHistory(t *testing.T) {
 	t.Log("✅ 对话历史: 追加/持久化读回/截断/recentHistory 全部通过")
 }
 
-// 12. 触发词匹配
+// 12. 触发词匹配（动作/社交类；情绪词归 detectMood）
 func TestMatchTrigger(t *testing.T) {
 	testInit(t)
 	cases := []struct{ text, want string }{
-		{"开心", "开心"},
-		{"我今天很开心", "开心"},
 		{"拜拜", "眨眼"},
 		{"荡秋千", "单人荡秋千"},
-		{"谢谢", "开心"},
 		{"晚安", "困倦"},
+		{"我们跳舞吧", "蝴蝶围圈"},
+		{"摸鱼", "河边锦鲤"},
 	}
 	for _, c := range cases {
 		got := matchTrigger(c.text)
@@ -335,11 +334,23 @@ func TestMatchTrigger(t *testing.T) {
 			t.Errorf("matchTrigger(%q) = %q, want %q", c.text, got, c.want)
 		}
 	}
-	// 不匹配的普通消息
-	if got := matchTrigger("今天天气不错"); got != "" {
-		t.Errorf("普通消息不应触发: %q", got)
+	// 不匹配：情绪词/普通消息（情绪词走 detectMood）
+	for _, text := range []string{"我今天很开心", "我太难过了", "今天天气不错"} {
+		if got := matchTrigger(text); got != "" {
+			t.Errorf("不应触发: %q → %q", text, got)
+		}
 	}
-	t.Log("✅ 触发词: 别名/完整名/普通消息 全部通过")
+	// detectMood 情绪识别
+	if m := detectMood("我今天太难过了"); m != "sad" {
+		t.Errorf("detectMood sad 失败: %q", m)
+	}
+	if m := detectMood("哈哈太棒了"); m != "happy" {
+		t.Errorf("detectMood happy 失败: %q", m)
+	}
+	if m := detectMood("今天天气不错"); m != "" {
+		t.Errorf("detectMood 空失败: %q", m)
+	}
+	t.Log("✅ 触发词+情绪识别: 动作词触发/情绪词分流 全部通过")
 }
 
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）

@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -198,6 +201,11 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "reply": reply})
 		return
 	}
+	// 待办命令
+	if reply, handled := handleTodoCommand(text); handled {
+		writeJSON(w, map[string]any{"ok": true, "reply": reply})
+		return
+	}
 	// 触发词表演（秒响应，不走 AI）
 	if act := matchTrigger(text); act != "" {
 		if _, ok := actionFiles[act]; ok {
@@ -208,6 +216,8 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "reply": "🎭 来啦～"})
 		return
 	}
+	// 情绪识别
+	applyMoodReaction(detectMood(text), globalPlayer)
 	// 忙时提示
 	if isTaskBusy() {
 		writeJSON(w, map[string]any{"ok": false, "busy": true, "reply": "🫥 小双正在忙，等我一下下～"})
@@ -315,6 +325,43 @@ func handleMood(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "emotion": emotion})
 }
 
+// speakMu 语音播报互斥（一次只播一条）
+var speakMu sync.Mutex
+
+// handleSpeak POST /speak  {"text":"正在分析数据..."} —— 小双语音播报（Hermes 干活进度）
+// 气泡显示 + Edge TTS 语音播放（后台，不阻塞响应）
+func handleSpeak(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		http.Error(w, "empty text", http.StatusBadRequest)
+		return
+	}
+	fmt.Printf("[http] 语音播报: %s\n", text)
+	if globalAddMsg != nil {
+		globalAddMsg("assistant", "🔊 "+text)
+	}
+	go func() {
+		speakMu.Lock()
+		defer speakMu.Unlock()
+		mp3 := filepath.Join(os.TempDir(), fmt.Sprintf("speak_%d.mp3", time.Now().UnixNano()))
+		if err := ttsEdge(text, mp3); err == nil {
+			playAudio(mp3)
+		}
+	}()
+	writeJSON(w, map[string]any{"ok": true})
+}
+
 // shellQuote 单引号包裹（shell 安全引用，防密码含特殊字符）
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
@@ -358,9 +405,10 @@ func startHTTPServer() {
 	mux.HandleFunc("/chat", handleChat)
 	mux.HandleFunc("/action", handleAction)
 	mux.HandleFunc("/mood", handleMood)
+	mux.HandleFunc("/speak", handleSpeak)
 	mux.HandleFunc("/status", handleStatus)
 	srv := &http.Server{Addr: httpAddr, Handler: mux}
-	fmt.Printf("[http] 接口已启动: http://%s/exec /chat /action /mood /status\n", httpAddr)
+	fmt.Printf("[http] 接口已启动: http://%s/exec /chat /action /mood /speak /status\n", httpAddr)
 	if err := srv.ListenAndServe(); err != nil {
 		fmt.Printf("[http] 服务退出: %v\n", err)
 	}

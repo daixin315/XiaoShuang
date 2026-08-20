@@ -35,6 +35,7 @@ var (
 	coreLines []string        // 核心区（行序=时间序，旧在前）
 	sysLines  []string        // 系统区
 	impLines  []string        // 重要区
+	actions   []string        // 动作区（小双会表演的表情+动作名，启动时从资源扫描生成）
 	timeline  []TimelineEntry // 时间流水（按 ts 升序）
 	lastTick  time.Time
 )
@@ -447,6 +448,83 @@ func memoryPrompt(includeSystem bool) string {
 var systemKeywords = []string{"系统", "电脑", "设备", "装机", "Ubuntu", "Windows", "Linux", "macOS",
 	"显卡", "CPU", "内存", "硬盘", "网络", "配置", "机器", "主机", "系统盘"}
 
+// buildActions 从资源扫描结果生成动作区（表情+动作名），写盘 memory/actions.txt
+// 在 scanResources() 之后调用
+func buildActions() {
+	memMu.Lock()
+	defer memMu.Unlock()
+	actions = nil
+	for _, n := range exprNames {
+		actions = append(actions, "表情:"+n)
+	}
+	for _, n := range actionNames {
+		actions = append(actions, "动作:"+n)
+	}
+	if memDir != "" {
+		writeLayerFile("actions", actions)
+	}
+	fmt.Printf("[memory] 动作区: %d 个（表情%d+动作%d）\n", len(actions), len(exprNames), len(actionNames))
+}
+
+// actionAbilityPrompt 生成"你会表演什么"的能力描述（注入 system，让 AI 回复时选动作）
+func actionAbilityPrompt() string {
+	memMu.Lock()
+	defer memMu.Unlock()
+	if len(actions) == 0 {
+		return ""
+	}
+	return "你会表演这些表情和动作：" + strings.Join(actions, "、") +
+		"。回复时如果觉得合适，在回复末尾单独一行输出 [表演]名字（只能选一个，必须是上面列出的完整名字）；不需要表演就不输出。"
+}
+
+// extractAction 从 AI 回复中解析 [表演]名字，返回(清理后的回复, 动作名或空)
+// 清理后为空（AI 只输出了表演行）→ 回退原文，避免空回复
+func extractAction(reply string) (string, string) {
+	lines := strings.Split(reply, "\n")
+	var keep []string
+	action := ""
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "[表演]") {
+			name := strings.TrimSpace(strings.TrimPrefix(t, "[表演]"))
+			// AI 可能输出 "动作:河边戏水" / "表情:开心"（带前缀），剥离
+			name = strings.TrimPrefix(name, "动作:")
+			name = strings.TrimPrefix(name, "表情:")
+			name = strings.TrimSpace(name)
+			if _, ok := actionFiles[name]; ok {
+				action = name
+				continue
+			}
+			if _, ok := exprFiles[name]; ok {
+				action = name
+				continue
+			}
+		}
+		keep = append(keep, l)
+	}
+	result := strings.Join(keep, "\n")
+	if strings.TrimSpace(result) == "" {
+		return reply, action // 回退原文（表演照播）
+	}
+	return result, action
+}
+
+// playExtractedAction 播放 AI 选的表情/动作（动作单次，表情循环）
+func playExtractedAction(name string, player *VideoPlayer) {
+	if player == nil {
+		return
+	}
+	if _, ok := actionFiles[name]; ok {
+		fmt.Printf("[action] AI 选择动作: %s\n", name)
+		playAction(name, player)
+		return
+	}
+	if _, ok := exprFiles[name]; ok {
+		fmt.Printf("[action] AI 选择表情: %s\n", name)
+		playExpr(name, player)
+	}
+}
+
 // listMemory 分层查看（/记忆 命令）
 func listMemory() string {
 	memMu.Lock()
@@ -480,6 +558,7 @@ func listMemory() string {
 	sb.WriteString(section("【核心】", coreLines))
 	sb.WriteString(section("【系统】", sysLines))
 	sb.WriteString(section("【重要】", impLines))
+	sb.WriteString(section("【动作】", actions))
 	sb.WriteString(section("【今天】", today))
 	sb.WriteString(section("【本周】", week))
 	sb.WriteString(section("【更远·待归档】", far))

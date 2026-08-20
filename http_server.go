@@ -221,16 +221,21 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		if isErr {
 			reply = friendlyChatError(err)
 		}
+		// 解析 AI 选择的表演动作/表情
+		cleanReply, actName := extractAction(reply)
+		if !isErr && actName != "" {
+			playExtractedAction(actName, globalPlayer)
+		}
 		chatLogMu.Lock()
-		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: reply})
+		chatHistory = append(chatHistory, ChatMessage{Role: "assistant", Content: cleanReply})
 		chatLogMu.Unlock()
-		globalAddMsg("assistant", reply)
+		globalAddMsg("assistant", cleanReply)
 		if isErr {
 			setMoodNow("sad", globalPlayer)
 		} else {
 			setMoodNow("happy", globalPlayer)
 		}
-		done <- reply
+		done <- cleanReply
 	})
 	reply := <-done
 	writeJSON(w, map[string]any{"ok": true, "reply": reply})

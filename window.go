@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -261,10 +262,22 @@ func runMainWindow(exeDir string) {
 	langReady = true
 	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(w) })
 
+	// 💡 Help 桌面观察：截图OCR看用户在干嘛，需要帮助就弹出文字，心情好/差播表情
+	var helpBtn *widget.Button
+	helpBtn = widget.NewButton("💡 Help", func() {
+		if isHelperActive() {
+			toggleHelper(false)
+			helpBtn.SetText("💡 Help")
+		} else {
+			toggleHelper(true)
+			helpBtn.SetText("🟢 Help 中")
+		}
+	})
+
 	// ===== 语音按钮（按住说话）=====
 	recBtn := newHoldButton("🎤 按住说话", startRecord, func() { stopRecordAndSend(addMsg, player) })
 
-	bottomBar := container.NewHBox(menuBtn, recBtn, setBtn, langSel)
+	bottomBar := container.NewHBox(menuBtn, helpBtn, recBtn, setBtn, langSel)
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
@@ -280,7 +293,9 @@ func runMainWindow(exeDir string) {
 	go startRecallTimer() // 定时回忆
 	go startTodoLoop()    // 待办检查（到点提醒）
 	go startWakeLoop()    // 语音唤醒（喊"小双"）
-	go startTray(w)       // 系统托盘（Linux 需 appindicator）
+	if os.Getenv("FISH_NO_TRAY") == "" {
+		go startTray(w) // 系统托盘（Linux 需 appindicator）；FISH_NO_TRAY=1 跳过（排查用）
+	}
 
 	// ===== 关窗保护：点 X → 隐藏到托盘（不退出）；托盘右键菜单可退出 =====
 	w.SetCloseIntercept(func() {
@@ -593,6 +608,8 @@ func openSettingsDialog(parent fyne.Window) {
 	system.SetText(s.System)
 	sttModel := widget.NewSelectEntry([]string{"tiny", "base", "small", "medium", "large-v3"})
 	sttModel.SetText(s.STTModel)
+	helpInt := widget.NewEntry()
+	helpInt.SetText(fmt.Sprintf("%d", helperInterval()))
 
 	form := dialog.NewForm("⚙️ 设置", "保存", "取消",
 		[]*widget.FormItem{
@@ -601,10 +618,15 @@ func openSettingsDialog(parent fyne.Window) {
 			widget.NewFormItem("模型", model),
 			widget.NewFormItem("人设", system),
 			widget.NewFormItem("语音识别模型", sttModel),
+			widget.NewFormItem("Help观察间隔(秒)", helpInt),
 		},
 		func(ok bool) {
 			if !ok {
 				return
+			}
+			iv, _ := strconv.Atoi(strings.TrimSpace(helpInt.Text))
+			if iv <= 0 {
+				iv = helperDefaultInt
 			}
 			settingsMu.Lock()
 			settings.BaseURL = strings.TrimSpace(base.Text)
@@ -612,6 +634,7 @@ func openSettingsDialog(parent fyne.Window) {
 			settings.Model = strings.TrimSpace(model.Text)
 			settings.System = system.Text
 			settings.STTModel = sttModel.Text
+			settings.HelpInterval = iv
 			settingsMu.Unlock()
 			saveSettings()
 		}, parent)

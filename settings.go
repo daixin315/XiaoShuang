@@ -10,17 +10,28 @@ import (
 
 // Settings 侧边栏接入配置（存 exe 同目录 settings.json）
 type Settings struct {
-	BaseURL   string `json:"base_url"`   // OpenAI 兼容 API 地址
-	APIKey    string `json:"api_key"`    // API Key
-	Model     string `json:"model"`      // 对话模型
-	System    string `json:"system"`     // 系统提示词（人设）
-	STTMode   string `json:"stt_mode"`   // local(whisper) | openai
-	STTModel  string `json:"stt_model"`  // 本地 whisper 模型（small/medium）
-	STTCmd    string `json:"stt_cmd"`    // 本地 STT 调用命令（含 venv python）
-	TTSMode   string `json:"tts_mode"`   // edge | openai
-	TTSVoice  string `json:"tts_voice"`  // edge 音色
-	TTSBin    string `json:"tts_bin"`    // edge-tts 可执行路径
-	RecordDev string `json:"record_dev"` // 录音设备（ffmpeg 参数）
+	BaseURL      string `json:"base_url"`      // OpenAI 兼容 API 地址
+	APIKey       string `json:"api_key"`       // API Key
+	Model        string `json:"model"`         // 对话模型
+	System       string `json:"system"`        // 系统提示词（人设）
+	STTMode      string `json:"stt_mode"`      // local(whisper) | openai
+	STTModel     string `json:"stt_model"`     // 本地 whisper 模型（small/medium）
+	STTCmd       string `json:"stt_cmd"`       // 本地 STT 调用命令（含 venv python）
+	TTSMode      string `json:"tts_mode"`      // edge | openai
+	TTSVoice     string `json:"tts_voice"`     // edge 音色
+	TTSBin       string `json:"tts_bin"`       // edge-tts 可执行路径
+	RecordDev    string `json:"record_dev"`    // 录音设备（ffmpeg 参数）
+	HelpInterval int    `json:"help_interval"` // Help 桌面观察间隔（秒，默认5）
+}
+
+// helperInterval 读取 Help 观察间隔（0或未配 → 默认5秒）
+func helperInterval() int {
+	settingsMu.RLock()
+	defer settingsMu.RUnlock()
+	if settings.HelpInterval > 0 {
+		return settings.HelpInterval
+	}
+	return helperDefaultInt
 }
 
 // readSudoPass 读 sudo 密码（独立文件 sudo_pass.txt，gitignore，避免被 saveSettings 覆盖）

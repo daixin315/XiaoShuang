@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +28,7 @@ var (
 	helperActive bool
 	helperStop   chan struct{}
 	lastOCRText  string
+	lastShotHash string // 图片 md5（vision 模式变化检测）
 	lastHelpAt   time.Time
 	lastMoodAt   time.Time
 )
@@ -86,6 +92,25 @@ func analyzeScreen(text string) (string, bool, string, string) {
 	if err != nil {
 		return "", false, "", "neutral"
 	}
+	return parseScreenJSON(reply)
+}
+
+// visionPrompt 视觉直看的分析提示
+const visionPrompt = `这张截图是用户的电脑屏幕。判断：1) 用户在做什么（写邮件/聊天/编程/看文档/浏览网页/看K线图等）2) 是否需要帮助（遇到困难、在问问题、有明显可帮忙的地方）3) 用户心情。
+只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的简短中文建议，20字内，不需要则空字符串","mood":"happy或sad或neutral"}`
+
+// analyzeScreenVision deepseek 视觉模型直看截图 → (活动, 需要帮助, 帮助文本, 心情)
+func analyzeScreenVision(imgPath string) (string, bool, string, string) {
+	reply, err := visionAnalyze(imgPath, visionPrompt)
+	if err != nil {
+		fmt.Printf("[helper] vision: %v\n", err)
+		return "", false, "", "neutral"
+	}
+	return parseScreenJSON(reply)
+}
+
+// parseScreenJSON 解析 AI 返回的 JSON
+func parseScreenJSON(reply string) (string, bool, string, string) {
 	var r struct {
 		Activity string `json:"activity"`
 		NeedHelp bool   `json:"need_help"`
@@ -96,6 +121,64 @@ func analyzeScreen(text string) (string, bool, string, string) {
 		return "", false, "", "neutral"
 	}
 	return r.Activity, r.NeedHelp, r.HelpText, r.Mood
+}
+
+// visionAnalyze 调用 deepseek 视觉模型分析图片（OpenAI 兼容，图片 base64 内联）
+func visionAnalyze(imgPath, prompt string) (string, error) {
+	settingsMu.RLock()
+	base := settings.BaseURL
+	key := settings.APIKey
+	settingsMu.RUnlock()
+	if base == "" || key == "" {
+		return "", fmt.Errorf("api_not_configured")
+	}
+	data, err := os.ReadFile(imgPath)
+	if err != nil {
+		return "", err
+	}
+	b64 := base64.StdEncoding.EncodeToString(data)
+	payload := map[string]any{
+		"model": "deepseek-v4-flash-vision-exp",
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{"type": "image_url", "image_url": map[string]string{"url": "data:image/png;base64," + b64}},
+					{"type": "text", "text": prompt},
+				},
+			},
+		},
+		"max_tokens": 800,
+	}
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequest("POST", strings.TrimSuffix(base, "/")+"/chat/completions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+key)
+	httpCli := &http.Client{Timeout: 60 * time.Second}
+	resp, err := httpCli.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		msg := string(b)
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		return "", fmt.Errorf("vision HTTP %d: %s", resp.StatusCode, msg)
+	}
+	var out struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(b, &out) != nil || len(out.Choices) == 0 {
+		return "", fmt.Errorf("vision 响应解析失败")
+	}
+	return out.Choices[0].Message.Content, nil
 }
 
 // toggleHelper 开关 Help 观察（true=开启，false=停止）
@@ -145,7 +228,7 @@ func helperLoop(stop chan struct{}) {
 	}
 }
 
-// helperTick 单轮观察：截图 → OCR → 变化检测 → AI → 行动
+// helperTick 单轮观察：截图 → 按方案(deepseek vision / paddle OCR) → 变化检测 → AI → 行动
 func helperTick() {
 	img := filepath.Join(os.TempDir(), fmt.Sprintf("helper_%d.png", time.Now().UnixNano()))
 	defer os.Remove(img)
@@ -153,23 +236,41 @@ func helperTick() {
 		fmt.Printf("[helper] %v\n", err)
 		return
 	}
-	text, err := ocrDesktop(img)
-	if err != nil || text == "" {
-		fmt.Printf("[helper] OCR: %v\n", err)
-		return
+	visionMode := helperVision()
+	var activity, helpText, mood string
+	var needHelp bool
+
+	if visionMode == "deepseek" {
+		// 方案1: deepseek vision 直看截图（能理解布局/图标，不只是文字）
+		h := md5.Sum(mustReadFile(img))
+		hash := fmt.Sprintf("%x", h)
+		helperMu.Lock()
+		if hash == lastShotHash {
+			helperMu.Unlock()
+			return // 画面没变化 → 跳过
+		}
+		lastShotHash = hash
+		helperMu.Unlock()
+		activity, needHelp, helpText, mood = analyzeScreenVision(img)
+	} else {
+		// 方案2: PaddleOCR 识别文字 → AI 分析
+		text, err := ocrDesktop(img)
+		if err != nil || text == "" {
+			fmt.Printf("[helper] OCR: %v\n", err)
+			return
+		}
+		helperMu.Lock()
+		same := text == lastOCRText
+		lastOCRText = text
+		helperMu.Unlock()
+		if same {
+			return
+		}
+		activity, needHelp, helpText, mood = analyzeScreen(text)
 	}
-	// 变化检测：和上次相同 → 不分析
-	helperMu.Lock()
-	same := text == lastOCRText
-	lastOCRText = text
-	helperMu.Unlock()
-	if same {
-		return
-	}
-	// AI 分析
-	activity, needHelp, helpText, mood := analyzeScreen(text)
+
 	fmt.Printf("[helper] 屏幕变化: %s | 活动=%s 帮助=%v 心情=%s\n",
-		truncateRune(text, 40), activity, needHelp, mood)
+		truncateRune(activity, 20), activity, needHelp, mood)
 	// 帮助提示（限频）
 	if needHelp && strings.TrimSpace(helpText) != "" && time.Since(lastHelpAt) > helperMinHelpGap {
 		lastHelpAt = time.Now()
@@ -187,4 +288,10 @@ func helperTick() {
 			}
 		}
 	}
+}
+
+// mustReadFile 读文件（失败返回 nil，md5 对空算也无妨）
+func mustReadFile(path string) []byte {
+	b, _ := os.ReadFile(path)
+	return b
 }

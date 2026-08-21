@@ -610,6 +610,12 @@ func openSettingsDialog(parent fyne.Window) {
 	sttModel.SetText(s.STTModel)
 	helpInt := widget.NewEntry()
 	helpInt.SetText(fmt.Sprintf("%d", helperInterval()))
+	helpVision := widget.NewSelect([]string{"DeepSeek Vision", "飞桨 OCR"}, func(string) {})
+	if helperVision() == "paddle" {
+		helpVision.SetSelected("飞桨 OCR")
+	} else {
+		helpVision.SetSelected("DeepSeek Vision")
+	}
 
 	form := dialog.NewForm("⚙️ 设置", "保存", "取消",
 		[]*widget.FormItem{
@@ -619,6 +625,7 @@ func openSettingsDialog(parent fyne.Window) {
 			widget.NewFormItem("人设", system),
 			widget.NewFormItem("语音识别模型", sttModel),
 			widget.NewFormItem("Help观察间隔(秒)", helpInt),
+			widget.NewFormItem("Help视觉方案", helpVision),
 		},
 		func(ok bool) {
 			if !ok {
@@ -628,6 +635,10 @@ func openSettingsDialog(parent fyne.Window) {
 			if iv <= 0 {
 				iv = helperDefaultInt
 			}
+			visionMode := "deepseek"
+			if helpVision.Selected == "飞桨 OCR" {
+				visionMode = "paddle"
+			}
 			settingsMu.Lock()
 			settings.BaseURL = strings.TrimSpace(base.Text)
 			settings.APIKey = strings.TrimSpace(key.Text)
@@ -635,6 +646,7 @@ func openSettingsDialog(parent fyne.Window) {
 			settings.System = system.Text
 			settings.STTModel = sttModel.Text
 			settings.HelpInterval = iv
+			settings.HelpVision = visionMode
 			settingsMu.Unlock()
 			saveSettings()
 		}, parent)

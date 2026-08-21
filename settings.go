@@ -22,6 +22,7 @@ type Settings struct {
 	TTSBin       string `json:"tts_bin"`       // edge-tts 可执行路径
 	RecordDev    string `json:"record_dev"`    // 录音设备（ffmpeg 参数）
 	HelpInterval int    `json:"help_interval"` // Help 桌面观察间隔（秒，默认5）
+	HelpVision   string `json:"help_vision"`   // Help 视觉方案: deepseek(默认) | paddle
 }
 
 // helperInterval 读取 Help 观察间隔（0或未配 → 默认5秒）
@@ -32,6 +33,16 @@ func helperInterval() int {
 		return settings.HelpInterval
 	}
 	return helperDefaultInt
+}
+
+// helperVision 读取 Help 视觉方案（默认 paddle 飞桨——主要场景是文字帮助，OCR 够用）
+func helperVision() string {
+	settingsMu.RLock()
+	defer settingsMu.RUnlock()
+	if settings.HelpVision == "deepseek" {
+		return "deepseek"
+	}
+	return "paddle"
 }
 
 // readSudoPass 读 sudo 密码（独立文件 sudo_pass.txt，gitignore，避免被 saveSettings 覆盖）

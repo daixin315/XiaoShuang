@@ -39,7 +39,7 @@ func init() {
 	if runtime.GOOS == "windows" {
 		// Windows 绿色版：所有文件在 exe 同目录，双击即用
 		mpvBin = filepath.Join(exeDir, "mpv.exe")
-		videoDir = filepath.Join(exeDir, "resources")
+		videoDir = filepath.Join(exeDir, "assets") // 与 Linux 统一目录名
 		moodFile = filepath.Join(exeDir, "mood.json")
 		sockPath = "127.0.0.1:8712" // Windows 用 TCP IPC
 		mpvArgs = []string{
@@ -164,6 +164,7 @@ func readMood() string {
 }
 
 func main() {
+	setupLogFile() // Windows：日志写 exe 同目录 log.txt
 	flag.StringVar(&videoDir, "video-dir", videoDir, "素材目录（含主图和动画）")
 	flag.StringVar(&moodFile, "mood-file", moodFile, "情绪文件路径（JSON: {\"emotion\":\"happy\"}）")
 	noMpv := flag.Bool("no-mpv", true, "一体化模式：不使用独立 mpv 窗口（视频由 Fyne 窗口内播放）")

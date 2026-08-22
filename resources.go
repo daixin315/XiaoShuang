@@ -16,14 +16,14 @@ import (
 // ============================================================
 
 var (
-	mainImgPath string // 主图完整路径
+	mainImgPath string                // 主图完整路径
 	exprFiles   = map[string]string{} // 表情：中文名 → 路径
 	actionFiles = map[string]string{} // 动作：中文名 → 路径
 	exprNames   = []string{}          // 表情中文名（排序）
 	actionNames = []string{}          // 动作中文名（排序）
 )
 
-// 英文情绪 → 中文表情名（mood.json 兼容映射，外部用英文写入）
+// 英文情绪 → 中文表情名（mood.json 兼容映射 + 打包英文文件名还原索引）
 var emotionAlias = map[string]string{
 	"happy":      "开心",
 	"smile":      "微笑",
@@ -45,11 +45,36 @@ var emotionAlias = map[string]string{
 	"speechless": "无语",
 }
 
+// actionAlias 英文动作名 → 中文动作名（打包英文文件名时还原索引用）
+var actionAlias = map[string]string{
+	"swing":            "单人荡秋千",
+	"butterfly_finger": "蝴蝶停指尖",
+	"riverside_play":   "河边戏水",
+	"lie_flowers":      "躺花丛",
+	"horse":            "看马摸马",
+	"phoenix":          "凤凰落手臂",
+	"koi":              "河边锦鲤",
+	"butterfly_circle": "蝴蝶围圈",
+	"pick_fruit":       "摘野果喂狗",
+	"hug_dog":          "抱狗荡秋千",
+}
+
+// firstExist 返回第一个存在的目录（中文优先，英文兜底——Windows 绿色版用英文文件名防乱码）
+func firstExist(paths ...string) string {
+	for _, p := range paths {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p
+		}
+	}
+	return paths[0]
+}
+
 // scanResources 扫描素材目录（videoDir 下），构建索引；失败时打印警告不退出
 func scanResources() {
-	exprDir := filepath.Join(videoDir, "表情")
-	actDir := filepath.Join(videoDir, "动作")
-	mainDir := filepath.Join(videoDir, "主图")
+	// 目录双兼容：中文目录（Linux 现有）或英文目录（Windows 绿色版）
+	exprDir := firstExist(filepath.Join(videoDir, "表情"), filepath.Join(videoDir, "expr"))
+	actDir := firstExist(filepath.Join(videoDir, "动作"), filepath.Join(videoDir, "action"))
+	mainDir := firstExist(filepath.Join(videoDir, "主图"), filepath.Join(videoDir, "main"))
 
 	mainImgPath = filepath.Join(mainDir, "main.png")
 	if !fileExists(mainImgPath) {
@@ -64,11 +89,17 @@ func scanResources() {
 
 	for _, mp4 := range listMP4(exprDir) {
 		name := strings.TrimSuffix(filepath.Base(mp4), ".mp4")
+		if zh, ok := emotionAlias[name]; ok {
+			name = zh // 英文文件名 → 中文索引（触发词/AI表演用中文）
+		}
 		exprFiles[name] = mp4
 		exprNames = append(exprNames, name)
 	}
 	for _, mp4 := range listMP4(actDir) {
 		name := strings.TrimSuffix(filepath.Base(mp4), ".mp4")
+		if zh, ok := actionAlias[name]; ok {
+			name = zh
+		}
 		actionFiles[name] = mp4
 		actionNames = append(actionNames, name)
 	}

@@ -1,16 +1,16 @@
 package main
 
 import (
-	"path/filepath"
-	"strings"
-	"runtime"
-	"os"
-	"time"
 	"fmt"
 	"image"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -75,6 +75,14 @@ func hwaccelEnv() []string {
 	return []string{"LIBVA_DRIVER_NAME=radeonsi"}
 }
 
+// ffmpegBinPath 返回 ffmpeg 可执行路径（Windows 用 exe 同目录 ffmpeg.exe，其余用系统 ffmpeg）
+func ffmpegBinPath() string {
+	if isWindows() {
+		return filepath.Join(exeDir, "ffmpeg.exe")
+	}
+	return "ffmpeg"
+}
+
 // Play 播放视频文件（循环），fps 抽帧率（默认2）
 func (vp *VideoPlayer) Play(videoPath string, fps int) {
 	vp.play(videoPath, fps, false, nil)
@@ -100,7 +108,8 @@ func (vp *VideoPlayer) play(videoPath string, fps int, once bool, onDone func())
 	ffArgs := append(hwaccelArgs(), "-i", videoPath,
 		"-vf", "fps="+itoa(fps)+",scale=480:270,format=rgba",
 		"-f", "rawvideo", "-pix_fmt", "rgba", "-")
-	cmd := exec.Command("ffmpeg", ffArgs...)
+	cmd := exec.Command(ffmpegBinPath(), ffArgs...)
+	hideWindow(cmd) // Windows 不弹控制台窗口
 	fmt.Println("[player] ffmpeg 准备启动(raw管道+硬解)")
 
 	go func() {
@@ -224,7 +233,8 @@ func (vp *VideoPlayer) play(videoPath string, fps int, once bool, onDone func())
 					ffArgs := append(hwaccelArgs(), "-i", videoPath,
 						"-vf", "fps="+itoa(fps)+",scale=480:270,format=rgba",
 						"-f", "rawvideo", "-pix_fmt", "rgba", "-")
-					cmd = exec.Command("ffmpeg", ffArgs...)
+					cmd = exec.Command(ffmpegBinPath(), ffArgs...)
+					hideWindow(cmd) // Windows 不弹控制台窗口
 					break
 				}
 			}
@@ -233,9 +243,9 @@ func (vp *VideoPlayer) play(videoPath string, fps int, once bool, onDone func())
 }
 
 var (
-	showCallCount  int
-	doExecCount    int
-	doExecLastImg  string
+	showCallCount int
+	doExecCount   int
+	doExecLastImg string
 )
 
 func (vp *VideoPlayer) showFrame(img image.Image) {
@@ -256,6 +266,7 @@ func (vp *VideoPlayer) showFrame(img image.Image) {
 		fmt.Printf("[player] showFrame#%d doExec#%d img=%s\n", showCallCount, doExecCount, doExecLastImg)
 	}
 }
+
 // Stop 停止播放
 func (vp *VideoPlayer) Stop() {
 	vp.mu.Lock()

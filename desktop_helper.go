@@ -2,14 +2,14 @@ package main
 
 import (
 	"bytes"
-	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
+	"math/bits"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -28,16 +28,61 @@ var (
 	helperActive bool
 	helperStop   chan struct{}
 	lastOCRText  string
-	lastShotHash string // 图片 md5（vision 模式变化检测）
-	lastHelpAt   time.Time
-	lastMoodAt   time.Time
+	lastShotHash uint64 // 截图 dHash 指纹（变化检测）
+	lastActivity string // 上次分析的活动
 )
 
 const (
-	helperMinHelpGap = 5 * time.Minute // 帮助提示最小间隔（防刷屏）
-	helperMinMoodGap = 3 * time.Minute // 表情播放最小间隔
-	helperDefaultInt = 5               // 默认间隔秒
+	helperDefaultInt = 5 // 默认间隔秒（5秒看一次）
+	helperHashThresh = 8 // dHash 汉明距离阈值：超过才算显著变化（过滤光标/时钟等细小变化）
 )
+
+// dHash 计算图片感知哈希（64 位）：缩 9x8 灰度 → 相邻像素梯度
+func dHash(img image.Image) uint64 {
+	b := img.Bounds()
+	srcW, srcH := b.Dx(), b.Dy()
+	if srcW == 0 || srcH == 0 {
+		return 0
+	}
+	const gw, gh = 9, 8
+	gray := make([]float64, gw*gh)
+	for gy := 0; gy < gh; gy++ {
+		for gx := 0; gx < gw; gx++ {
+			x0, x1 := gx*srcW/gw, (gx+1)*srcW/gw
+			y0, y1 := gy*srcH/gh, (gy+1)*srcH/gh
+			if x1 <= x0 {
+				x1 = x0 + 1
+			}
+			if y1 <= y0 {
+				y1 = y0 + 1
+			}
+			var sum float64
+			n := 0
+			for y := y0; y < y1; y++ {
+				for x := x0; x < x1; x++ {
+					r, g, bl, _ := img.At(x, y).RGBA()
+					sum += 0.299*float64(r>>8) + 0.587*float64(g>>8) + 0.114*float64(bl>>8)
+					n++
+				}
+			}
+			gray[gy*gw+gx] = sum / float64(n)
+		}
+	}
+	var h uint64
+	for gy := 0; gy < gh; gy++ {
+		for gx := 0; gx < 8; gx++ {
+			if gray[gy*gw+gx] > gray[gy*gw+gx+1] {
+				h |= 1 << uint(gy*8+gx)
+			}
+		}
+	}
+	return h
+}
+
+// hammingDist 汉明距离（两 hash 不同位数）
+func hammingDist(a, b uint64) int {
+	return bits.OnesCount64(a ^ b)
+}
 
 // ocrHelperPath OCR 脚本绝对路径
 func ocrHelperPath() string {
@@ -54,18 +99,9 @@ func venvPython() string {
 	return "python3"
 }
 
-// desktopShot 截图全屏（gridhand，继承主机 X 环境；Wayland 下走 Portal）
+// desktopShot 截图全屏（平台分派：Linux gridhand / Windows GDI）
 func desktopShot(path string) error {
-	cmd := exec.Command("gridhand", "screenshot", "--output", path)
-	cmd.Env = append(os.Environ(), "DISPLAY=:0", "XAUTHORITY="+getXauthority())
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("截图失败: %v %s", err, strings.TrimSpace(string(out)))
-	}
-	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("截图文件未生成")
-	}
-	return nil
+	return captureScreen(path)
 }
 
 // ocrDesktop OCR 识别图片文字
@@ -237,19 +273,23 @@ func helperTick() {
 		return
 	}
 	visionMode := helperVision()
+	if isWindows() {
+		visionMode = "deepseek" // Windows 无 PaddleOCR 环境，强制 DeepSeek Vision
+	}
 	var activity, helpText, mood string
 	var needHelp bool
 
 	if visionMode == "deepseek" {
 		// 方案1: deepseek vision 直看截图（能理解布局/图标，不只是文字）
-		h := md5.Sum(mustReadFile(img))
-		hash := fmt.Sprintf("%x", h)
+		// 变化检测：dHash 感知哈希，汉明距离 > 阈值才算显著变化（过滤光标/时钟/动画帧）
+		h := shotDHash(img)
 		helperMu.Lock()
-		if hash == lastShotHash {
+		dist := hammingDist(h, lastShotHash)
+		if h == 0 || dist <= helperHashThresh {
 			helperMu.Unlock()
-			return // 画面没变化 → 跳过
+			return // 无显著变化 → 跳过
 		}
-		lastShotHash = hash
+		lastShotHash = h
 		helperMu.Unlock()
 		activity, needHelp, helpText, mood = analyzeScreenVision(img)
 	} else {
@@ -271,27 +311,23 @@ func helperTick() {
 
 	fmt.Printf("[helper] 屏幕变化: %s | 活动=%s 帮助=%v 心情=%s\n",
 		truncateRune(activity, 20), activity, needHelp, mood)
-	// 帮助提示（限频）
-	if needHelp && strings.TrimSpace(helpText) != "" && time.Since(lastHelpAt) > helperMinHelpGap {
-		lastHelpAt = time.Now()
-		msg := "👀 看到你在" + activity + "，" + strings.TrimSpace(helpText)
-		globalAddMsg("assistant", msg)
+	// 只有明确帮助建议才弹（无间隔限制；无帮助时保持安静，不心跳不播报）
+	if needHelp && strings.TrimSpace(helpText) != "" {
+		globalAddMsg("assistant", "👀 看到你在"+activity+"，"+strings.TrimSpace(helpText))
 	}
-	// 心情表情（限频）
-	if mood == "happy" || mood == "sad" {
-		if time.Since(lastMoodAt) > helperMinMoodGap {
-			lastMoodAt = time.Now()
-			if mood == "happy" {
-				playExpr("开心", globalPlayer)
-			} else {
-				playExpr("伤心", globalPlayer)
-			}
-		}
-	}
+	lastActivity = activity
 }
 
-// mustReadFile 读文件（失败返回 nil，md5 对空算也无妨）
-func mustReadFile(path string) []byte {
-	b, _ := os.ReadFile(path)
-	return b
+// shotDHash 读取截图文件并计算 dHash（失败返回 0）
+func shotDHash(path string) uint64 {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return 0
+	}
+	return dHash(img)
 }

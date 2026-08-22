@@ -23,6 +23,7 @@ type Settings struct {
 	RecordDev    string `json:"record_dev"`    // 录音设备（ffmpeg 参数）
 	HelpInterval int    `json:"help_interval"` // Help 桌面观察间隔（秒，默认5）
 	HelpVision   string `json:"help_vision"`   // Help 视觉方案: deepseek(默认) | paddle
+	HelpPrompt   string `json:"help_prompt"`   // Help 分析补充提示词（附加在默认判断规则后，可空）
 }
 
 // helperInterval 读取 Help 观察间隔（0或未配 → 默认5秒）
@@ -43,6 +44,22 @@ func helperVision() string {
 		return "deepseek"
 	}
 	return "paddle"
+}
+
+// helperExtraPrompt 读取 Help 补充提示词（设置里可改，附加在默认判断规则后）
+func helperExtraPrompt() string {
+	settingsMu.RLock()
+	defer settingsMu.RUnlock()
+	return strings.TrimSpace(settings.HelpPrompt)
+}
+
+// buildVisionPrompt 组装 Help 分析提示词 = 默认规则 + 用户补充要求
+func buildVisionPrompt() string {
+	extra := helperExtraPrompt()
+	if extra == "" {
+		return visionPrompt
+	}
+	return visionPrompt + "\n额外要求：" + extra
 }
 
 // readSudoPass 读 sudo 密码（独立文件 sudo_pass.txt，gitignore，避免被 saveSettings 覆盖）

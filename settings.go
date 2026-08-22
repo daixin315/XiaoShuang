@@ -62,9 +62,9 @@ var (
 
 func defaultSettings() Settings {
 	return Settings{
-		BaseURL:   "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		BaseURL:   "https://api.deepseek.com/v1", // 默认 DeepSeek（用户只需填 API Key）
 		APIKey:    "",
-		Model:     "qwen-plus",
+		Model:     "deepseek-v4-flash",
 		System:    "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。",
 		STTMode:   "local",
 		STTModel:  "medium",

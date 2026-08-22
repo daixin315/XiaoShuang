@@ -13,8 +13,12 @@ import (
 // 后台监听：每 4 秒录 3 秒音频 → whisper tiny 识别 → 含"小双"→ 聆听模式（录 5 秒 → medium 识别 → 聊天）
 // 与按住说话录音互斥（recCmd 非空时跳过）
 
-// startWakeLoop 启动唤醒监听（goroutine）
+// startWakeLoop 启动唤醒监听（goroutine；Windows 无 pulse 音频，跳过）
 func startWakeLoop() {
+	if isWindows() {
+		fmt.Println("[wake] Windows 暂不支持语音唤醒（无 pulse）")
+		return
+	}
 	go func() {
 		fmt.Println("[wake] 唤醒监听已启动（喊“小双”试试）")
 		for {

@@ -253,7 +253,9 @@ func runMainWindow(exeDir string) {
 			settings.System = "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。无论对方用什么语言提问，都用中文回复。"
 		}
 		settingsMu.Unlock()
-		saveSettings() // 持久化，重启不丢
+		if err := saveSettings(); err != nil {
+			fmt.Printf("[settings] 语言切换保存失败: %v\n", err)
+		} // 持久化，重启不丢
 		if langReady {
 			addMsg("assistant", "🌍 已切换到"+v+"模式，之后我都会用"+v+"回复")
 		}
@@ -297,7 +299,8 @@ func runMainWindow(exeDir string) {
 		go startTray(w) // 系统托盘（Linux 需 appindicator）；FISH_NO_TRAY=1 跳过（排查用）
 	}
 
-	// ===== 关窗保护：点 X → 隐藏到托盘（不退出）；托盘右键菜单可退出 =====
+	// ===== 关窗保护：点 X → 隐藏到托盘（不退出）；托盘右键"显示窗口"恢复 =====
+	// 全平台统一（Windows 托盘右键菜单同样有"显示窗口"）
 	w.SetCloseIntercept(func() {
 		w.Hide() // 隐藏到托盘，程序继续常驻（HTTP/聊天/回忆都正常）
 	})
@@ -499,6 +502,7 @@ func startRecord() {
 			d = "麦克风"
 		}
 		cmd = exec.Command("ffmpeg", "-y", "-f", "dshow", "-i", "audio="+d, recFile)
+		hideWindow(cmd) // Windows 不弹控制台窗口
 	case isDarwin():
 		cmd = exec.Command("ffmpeg", "-y", "-f", "avfoundation", "-i", ":0", recFile)
 	default:
@@ -648,7 +652,13 @@ func openSettingsDialog(parent fyne.Window) {
 			settings.HelpInterval = iv
 			settings.HelpVision = visionMode
 			settingsMu.Unlock()
-			saveSettings()
+			if err := saveSettings(); err != nil {
+				fmt.Printf("[settings] 保存失败: %v\n", err)
+				dialog.ShowError(fmt.Errorf("设置保存失败：%v\n路径：%s", err, settingsPath), parent)
+				return
+			}
+			fmt.Printf("[settings] 已保存到 %s (模型=%s)\n", settingsPath, settings.Model)
+			dialog.ShowInformation("✅ 已保存", "设置已保存。\n"+settingsPath, parent)
 		}, parent)
 	form.Resize(fyne.NewSize(420, 520))
 	form.Show()

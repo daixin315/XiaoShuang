@@ -355,7 +355,7 @@ func TestMatchTrigger(t *testing.T) {
 	t.Log("✅ 触发词+情绪识别: 动作词触发/情绪词分流 全部通过")
 }
 
-// 13. dHash 感知哈希：微小变化距离小，显著变化距离大
+// 13. 像素差异变化检测：微小变化比例低，显著变化比例高
 func TestDHash(t *testing.T) {
 	// 生成两张 100x60 测试图
 	mk := func(bg, fg int, block bool) image.Image {
@@ -375,20 +375,19 @@ func TestDHash(t *testing.T) {
 	// 微小变化：单像素移动（光标）
 	small := mk(200, 0, false)
 	small.(*image.RGBA).Set(5, 5, color.RGBA{R: 0, G: 0, B: 0, A: 255})
-	// 显著变化：右上角出现大色块
+	// 显著变化：右半出现大色块（切页面）
 	big := mk(200, 0, true)
 
-	h1, h2, h3 := dHash(base), dHash(small), dHash(big)
-	dSmall := hammingDist(h1, h2)
-	dBig := hammingDist(h1, h3)
-	t.Logf("微小变化距离=%d, 显著变化距离=%d", dSmall, dBig)
-	if dSmall > helperHashThresh {
-		t.Errorf("微小变化应被过滤: dist=%d > 阈值%d", dSmall, helperHashThresh)
+	rSmall := grayDiffRatio(grayThumb(base), grayThumb(small))
+	rBig := grayDiffRatio(grayThumb(base), grayThumb(big))
+	t.Logf("微小变化比例=%.4f, 显著变化比例=%.4f", rSmall, rBig)
+	if rSmall > helperPixThresh {
+		t.Errorf("微小变化应被过滤: %.4f > 阈值%.2f", rSmall, helperPixThresh)
 	}
-	if dBig <= helperHashThresh {
-		t.Errorf("显著变化应触发: dist=%d <= 阈值%d", dBig, helperHashThresh)
+	if rBig <= helperPixThresh {
+		t.Errorf("显著变化应触发: %.4f <= 阈值%.2f", rBig, helperPixThresh)
 	}
-	t.Log("✅ dHash: 微小变化过滤/显著变化检出 通过")
+	t.Log("✅ 像素差异: 微小变化过滤/显著变化检出 通过")
 }
 
 // 3. PlayOnce 单次播放：播完触发 onDone（生成 1 秒测试视频）

@@ -620,6 +620,9 @@ func openSettingsDialog(parent fyne.Window) {
 	} else {
 		helpVision.SetSelected("DeepSeek Vision")
 	}
+	helpPrompt := widget.NewMultiLineEntry()
+	helpPrompt.SetText(helperExtraPrompt())
+	helpPrompt.SetPlaceHolder("附加在默认判断规则后的补充要求，如：如果用户在炒股/看K线，帮我分析大盘风险")
 
 	form := dialog.NewForm("⚙️ 设置", "保存", "取消",
 		[]*widget.FormItem{
@@ -630,6 +633,7 @@ func openSettingsDialog(parent fyne.Window) {
 			widget.NewFormItem("语音识别模型", sttModel),
 			widget.NewFormItem("Help观察间隔(秒)", helpInt),
 			widget.NewFormItem("Help视觉方案", helpVision),
+			widget.NewFormItem("Help补充提示词", helpPrompt),
 		},
 		func(ok bool) {
 			if !ok {
@@ -651,6 +655,7 @@ func openSettingsDialog(parent fyne.Window) {
 			settings.STTModel = sttModel.Text
 			settings.HelpInterval = iv
 			settings.HelpVision = visionMode
+			settings.HelpPrompt = helpPrompt.Text
 			settingsMu.Unlock()
 			if err := saveSettings(); err != nil {
 				fmt.Printf("[settings] 保存失败: %v\n", err)

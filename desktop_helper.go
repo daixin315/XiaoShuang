@@ -24,17 +24,19 @@ import (
 // 主打陪伴感和有用的帮助（间隔可设，帮助/表情有最小间隔防打扰）
 
 var (
-	helperMu     sync.Mutex
-	helperActive bool
-	helperStop   chan struct{}
-	lastOCRText  string
-	lastShotHash uint64 // 截图 dHash 指纹（变化检测）
-	lastActivity string // 上次分析的活动
+	helperMu          sync.Mutex
+	helperActive      bool
+	helperStop        chan struct{}
+	lastOCRText       string
+	lastShotGray      []byte    // 上一张 64x64 灰度缩略图（像素差异检测）
+	lastActivity      string    // 上次分析的活动
+	visionErrNotified bool      // vision 失败是否已提示过（防重复弹）
+	lastCompanionAt   time.Time // 变化反馈播报限频
 )
 
 const (
-	helperDefaultInt = 5 // 默认间隔秒（5秒看一次）
-	helperHashThresh = 8 // dHash 汉明距离阈值：超过才算显著变化（过滤光标/时钟等细小变化）
+	helperDefaultInt = 5    // 默认间隔秒（5秒看一次）
+	helperPixThresh  = 0.02 // 像素差异比例阈值（打字/滚动触发，光标/时钟忽略）
 )
 
 // dHash 计算图片感知哈希（64 位）：缩 9x8 灰度 → 相邻像素梯度
@@ -118,8 +120,14 @@ func analyzeScreen(text string) (string, bool, string, string) {
 	prompt := fmt.Sprintf(`屏幕上的文字（OCR结果）：
 %s
 
-判断：1) 用户在做什么（写邮件/聊天/编程/看文档/浏览网页等）2) 是否需要帮助（遇到困难、在问问题、有明显可帮忙的地方）3) 用户心情。
-只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的简短中文建议，20字内，不需要则空字符串","mood":"happy或sad或neutral"}`, text)
+判断：1) 用户在做什么（写邮件/聊天/编程/看文档/浏览网页等）2) 是否需要帮助：
+- 遇到困难、在问问题、有明显可帮忙的地方
+- 重点：如果用户在与人聊天（微信/QQ/邮件等），对方使用的语言不是中文——用电脑的人只懂中文 → 需要帮助，且 help_text 直接给出【对方消息的中文翻译】+【用对方语言回复的建议内容】，不用问"要不要翻译"，直接给
+3) 用户心情。
+只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的内容（40-100字，如'对方用英文问价格，翻译：价格是多少？建议回复：The price is about 20 dollars per unit.'），不需要则空字符串","mood":"happy或sad或neutral"}`, text)
+	if extra := helperExtraPrompt(); extra != "" {
+		prompt += "\n额外要求：" + extra
+	}
 	msgs := []ChatMessage{
 		{Role: "system", Content: "你是桌面观察助手，只输出JSON。"},
 		{Role: "user", Content: prompt},
@@ -132,16 +140,32 @@ func analyzeScreen(text string) (string, bool, string, string) {
 }
 
 // visionPrompt 视觉直看的分析提示
-const visionPrompt = `这张截图是用户的电脑屏幕。判断：1) 用户在做什么（写邮件/聊天/编程/看文档/浏览网页/看K线图等）2) 是否需要帮助（遇到困难、在问问题、有明显可帮忙的地方）3) 用户心情。
-只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的简短中文建议，20字内，不需要则空字符串","mood":"happy或sad或neutral"}`
+const visionPrompt = `这张截图是用户的电脑屏幕。判断：
+1) 用户在做什么（写邮件/聊天/编程/看文档/浏览网页/看K线图等）
+2) 是否需要帮助：
+   - 遇到困难、在问问题、有明显可帮忙的地方
+   - 重点：如果用户在与人聊天（微信/QQ/邮件等），对方使用的语言不是中文——用电脑的人只懂中文 → 需要帮助，且 help_text 直接给出【对方消息的中文翻译】+【用对方语言回复的建议内容】，不用问"要不要翻译"，直接给
+3) 用户心情
+只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的内容（40-100字，如'对方用英文问价格，翻译：价格是多少？建议回复：The price is about 20 dollars per unit.'），不需要则空字符串","mood":"happy或sad或neutral"}`
 
 // analyzeScreenVision deepseek 视觉模型直看截图 → (活动, 需要帮助, 帮助文本, 心情)
+// 失败时弹一次可见提示（API 未配置/调用失败），不再无声无息
 func analyzeScreenVision(imgPath string) (string, bool, string, string) {
-	reply, err := visionAnalyze(imgPath, visionPrompt)
+	reply, err := visionAnalyze(imgPath, buildVisionPrompt())
 	if err != nil {
-		fmt.Printf("[helper] vision: %v\n", err)
+		fmt.Printf("[helper] vision 失败: %v\n", err)
+		helperMu.Lock()
+		notified := visionErrNotified
+		visionErrNotified = true
+		helperMu.Unlock()
+		if !notified && globalAddMsg != nil {
+			globalAddMsg("assistant", "🤔 Help 需要 DeepSeek API Key——去 ⚙️ 设置里填一下（或检查网络），我就能看屏幕帮你啦")
+		}
 		return "", false, "", "neutral"
 	}
+	helperMu.Lock()
+	visionErrNotified = false
+	helperMu.Unlock()
 	return parseScreenJSON(reply)
 }
 
@@ -190,7 +214,7 @@ func visionAnalyze(imgPath, prompt string) (string, error) {
 	req, _ := http.NewRequest("POST", strings.TrimSuffix(base, "/")+"/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	httpCli := &http.Client{Timeout: 60 * time.Second}
+	httpCli := &http.Client{Timeout: 15 * time.Second} // 15s 超时，失败快速返回不卡轮次
 	resp, err := httpCli.Do(req)
 	if err != nil {
 		return "", err
@@ -242,7 +266,7 @@ func isHelperActive() bool {
 	return helperActive
 }
 
-// helperLoop 观察循环（单 goroutine，间隔可配）
+// helperLoop 观察循环（单 goroutine；每轮：截图→分析→完成后等 5 秒再下一轮）
 func helperLoop(stop chan struct{}) {
 	settingsMu.RLock()
 	iv := settings.HelpInterval
@@ -251,6 +275,7 @@ func helperLoop(stop chan struct{}) {
 	if interval < 3*time.Second {
 		interval = helperDefaultInt * time.Second
 	}
+	helperTick() // 触发后立即先跑一轮（不等 5 秒）
 	for {
 		select {
 		case <-stop:
@@ -260,7 +285,7 @@ func helperLoop(stop chan struct{}) {
 		if isTaskBusy() || globalPlayer == nil {
 			continue // 忙/未就绪跳过
 		}
-		helperTick()
+		helperTick() // 完成上一轮后才计时等 5 秒（等服务器返回再算间隔）
 	}
 }
 
@@ -281,16 +306,24 @@ func helperTick() {
 
 	if visionMode == "deepseek" {
 		// 方案1: deepseek vision 直看截图（能理解布局/图标，不只是文字）
-		// 变化检测：dHash 感知哈希，汉明距离 > 阈值才算显著变化（过滤光标/时钟/动画帧）
-		h := shotDHash(img)
+		// 变化检测：像素差异比例（64x64 灰度缩略图对比）
+		//   比例 > 2% → 有实质内容变化（打字/滚动/切页）→ 分析
+		//   比例 ≤ 2% → 细小变化（光标/时钟/动画帧）→ 跳过
+		_, gray := shotFeatures(img)
 		helperMu.Lock()
-		dist := hammingDist(h, lastShotHash)
-		if h == 0 || dist <= helperHashThresh {
-			helperMu.Unlock()
+		ratio := 0.0
+		if len(lastShotGray) == len(gray) && len(gray) > 0 {
+			ratio = grayDiffRatio(lastShotGray, gray)
+		}
+		// 第一次（无基准图）或差异超阈值 → 触发分析
+		changed := len(lastShotGray) == 0 || ratio > helperPixThresh
+		if changed {
+			lastShotGray = gray
+		}
+		helperMu.Unlock()
+		if !changed {
 			return // 无显著变化 → 跳过
 		}
-		lastShotHash = h
-		helperMu.Unlock()
 		activity, needHelp, helpText, mood = analyzeScreenVision(img)
 	} else {
 		// 方案2: PaddleOCR 识别文字 → AI 分析
@@ -311,23 +344,77 @@ func helperTick() {
 
 	fmt.Printf("[helper] 屏幕变化: %s | 活动=%s 帮助=%v 心情=%s\n",
 		truncateRune(activity, 20), activity, needHelp, mood)
-	// 只有明确帮助建议才弹（无间隔限制；无帮助时保持安静，不心跳不播报）
+	// 有明确帮助建议（含外语沟通翻译帮助）→ 弹提示；否则保持安静
 	if needHelp && strings.TrimSpace(helpText) != "" {
 		globalAddMsg("assistant", "👀 看到你在"+activity+"，"+strings.TrimSpace(helpText))
 	}
 	lastActivity = activity
 }
 
-// shotDHash 读取截图文件并计算 dHash（失败返回 0）
-func shotDHash(path string) uint64 {
+// shotFeatures 读取截图：返回 dHash（64位）+ 64x64 灰度缩略图（内容变化检测）
+func shotFeatures(path string) (uint64, []byte) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0
+		return 0, nil
 	}
 	defer f.Close()
 	img, _, err := image.Decode(f)
 	if err != nil {
+		return 0, nil
+	}
+	return dHash(img), grayThumb(img)
+}
+
+// grayThumb 把图片降采样为 64x64 灰度（块平均）
+func grayThumb(img image.Image) []byte {
+	b := img.Bounds()
+	srcW, srcH := b.Dx(), b.Dy()
+	if srcW == 0 || srcH == 0 {
+		return nil
+	}
+	const gs = 64
+	out := make([]byte, gs*gs)
+	for gy := 0; gy < gs; gy++ {
+		for gx := 0; gx < gs; gx++ {
+			x0, x1 := gx*srcW/gs, (gx+1)*srcW/gs
+			y0, y1 := gy*srcH/gs, (gy+1)*srcH/gs
+			if x1 <= x0 {
+				x1 = x0 + 1
+			}
+			if y1 <= y0 {
+				y1 = y0 + 1
+			}
+			var sum uint32
+			n := 0
+			for y := y0; y < y1; y++ {
+				for x := x0; x < x1; x++ {
+					r, g, bl, _ := img.At(x, y).RGBA()
+					sum += (299*r + 587*g + 114*bl) / 1000 >> 8
+					n++
+				}
+			}
+			if n > 0 {
+				out[gy*gs+gx] = byte(sum / uint32(n))
+			}
+		}
+	}
+	return out
+}
+
+// grayDiffRatio 两张缩略图的差异像素比例（差异 > 25 才算变化）
+func grayDiffRatio(a, b []byte) float64 {
+	if len(a) != len(b) || len(a) == 0 {
 		return 0
 	}
-	return dHash(img)
+	diff := 0
+	for i := range a {
+		d := int(a[i]) - int(b[i])
+		if d < 0 {
+			d = -d
+		}
+		if d > 25 {
+			diff++
+		}
+	}
+	return float64(diff) / float64(len(a))
 }

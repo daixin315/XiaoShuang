@@ -18,11 +18,49 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
 // 全局视频播放器（daemonLoop 和窗口共用）
 var globalPlayer *VideoPlayer
+
+// 全局窗口引用（判断可见性：隐藏到托盘时弹独立文本框）
+var globalWindow fyne.Window
+
+// globalWinVisible 主窗口是否可见（fyne 无 Visible()，自己维护；UI 线程内访问）
+var globalWinVisible = true
+
+// floatingWin 浮动提示窗（单例：有则更新内容，无则创建）
+var floatingWin fyne.Window
+
+// showFloatingMsg 弹独立文本框（窗口隐藏到托盘时替代气泡；Entry 支持选中复制+自动换行）
+func showFloatingMsg(text string) {
+	fyneDo(func() {
+		if floatingWin == nil {
+			floatingWin = fyne.CurrentApp().NewWindow("🐟 小双")
+			floatingWin.SetOnClosed(func() { floatingWin = nil })
+		}
+		msgEntry := widget.NewEntry()
+		msgEntry.MultiLine = true
+		msgEntry.SetText(text)
+		msgEntry.Wrapping = fyne.TextWrapBreak
+		floatingWin.SetContent(container.NewVBox(
+			msgEntry,
+			container.NewHBox(
+				layout.NewSpacer(),
+				widget.NewButton("知道了", func() {
+					if floatingWin != nil {
+						floatingWin.Close()
+					}
+				}),
+			),
+		))
+		floatingWin.Resize(fyne.NewSize(430, 220))
+		floatingWin.Show()
+		floatingWin.RequestFocus()
+	})
+}
 
 // 全局视频显示对象（playMainStatic 回主图用）
 var globalVideoImg *canvas.Image
@@ -44,29 +82,24 @@ var (
 
 // 静默总结：一轮对话 = 用户停止发言 5 分钟；到点总结新增消息
 var (
-	summarizeTimer *time.Timer
 	lastSummaryIdx int
 )
 
-// scheduleSummarize 重置 5 分钟静默计时器（用户每发一条消息调用）
+// scheduleSummarize 立即总结新增对话（AI 回复后调用，不再等 5 分钟静默）
+// 用户之前要求"不需要5分钟间隔"；且 5 分钟定时器会被频繁发言一直重置导致永不总结（记忆为空的根因）
 func scheduleSummarize() {
-	if summarizeTimer != nil {
-		summarizeTimer.Stop()
+	chatLogMu.Lock()
+	start := lastSummaryIdx
+	if start > len(chatHistory) {
+		start = 0 // 历史被截断过，从头总结
 	}
-	summarizeTimer = time.AfterFunc(5*time.Minute, func() {
-		chatLogMu.Lock()
-		start := lastSummaryIdx
-		if start > len(chatHistory) {
-			start = 0 // 历史被截断过，从头总结
-		}
-		newMsgs := append([]ChatMessage{}, chatHistory[start:]...)
-		lastSummaryIdx = len(chatHistory)
-		chatLogMu.Unlock()
-		if len(newMsgs) >= 2 { // 至少一问一答才算一轮
-			fmt.Printf("[memory] 对话静默5分钟，总结 %d 条新消息\n", len(newMsgs))
-			enqueue(func() { summarizeForMemory(newMsgs) }) // 排队串行，不和主对话抢
-		}
-	})
+	newMsgs := append([]ChatMessage{}, chatHistory[start:]...)
+	lastSummaryIdx = len(chatHistory)
+	chatLogMu.Unlock()
+	if len(newMsgs) >= 2 { // 至少一问一答才算一轮
+		fmt.Printf("[memory] 总结 %d 条新消息\n", len(newMsgs))
+		enqueue(func() { summarizeForMemory(newMsgs) }) // 排队串行，不和主对话抢
+	}
 }
 
 // fyneDo fyne.Do 包装（供非 UI 线程安全更新界面）
@@ -155,11 +188,21 @@ func runMainWindow(exeDir string) {
 			if r == "assistant" {
 				prefix = "🐟 小双"
 			}
+			// 窗口隐藏到托盘时 → 弹独立文本框（气泡看不见）
+			if globalWindow != nil && !globalWinVisible {
+				showFloatingMsg(prefix + "：" + t)
+				return
+			}
 			// 半透明气泡
 			bg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 30, A: 200})
+			// 消息文本用 Entry：支持鼠标拖选部分内容 + Ctrl+C/右键复制 + 自动换行
+			msgEntry := widget.NewEntry()
+			msgEntry.MultiLine = true
+			msgEntry.SetText(t)
+			msgEntry.Wrapping = fyne.TextWrapBreak
 			content := container.NewVBox(
 				widget.NewLabelWithStyle(prefix, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-				widget.NewLabel(t),
+				msgEntry,
 			)
 			bubble := container.NewStack(bg, container.NewPadded(content))
 			bubbleBox.Add(bubble)
@@ -301,7 +344,9 @@ func runMainWindow(exeDir string) {
 
 	// ===== 关窗保护：点 X → 隐藏到托盘（不退出）；托盘右键"显示窗口"恢复 =====
 	// 全平台统一（Windows 托盘右键菜单同样有"显示窗口"）
+	globalWindow = w
 	w.SetCloseIntercept(func() {
+		globalWinVisible = false
 		w.Hide() // 隐藏到托盘，程序继续常驻（HTTP/聊天/回忆都正常）
 	})
 
@@ -453,6 +498,7 @@ func sendChat(text string, addMsg func(string, string), player *VideoPlayer) {
 		}
 		addMsg("assistant", cleanReply)
 		appendChat("assistant", cleanReply) // 持久化
+		scheduleSummarize()                 // 回复完成 → 立即总结本轮对话进记忆
 		if !isErr {
 			setMoodNow("happy", player)
 		} else {
@@ -565,6 +611,7 @@ func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
 			}
 			addMsg("assistant", cleanReply)
 			appendChat("assistant", cleanReply) // 持久化
+			scheduleSummarize()                 // 回复完成 → 立即总结本轮对话进记忆（语音路径）
 			if isErr {
 				setMoodNow("sad", player)
 				return

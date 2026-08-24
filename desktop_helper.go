@@ -122,9 +122,10 @@ func analyzeScreen(text string) (string, bool, string, string) {
 
 判断：1) 用户在做什么（写邮件/聊天/编程/看文档/浏览网页等）2) 是否需要帮助：
 - 遇到困难、在问问题、有明显可帮忙的地方
-- 重点：如果用户在与人聊天（微信/QQ/邮件等），对方使用的语言不是中文——用电脑的人只懂中文 → 需要帮助，且 help_text 直接给出【对方消息的中文翻译】+【用对方语言回复的建议内容】，不用问"要不要翻译"，直接给
+- 重点1：如果用户在与人聊天（微信/QQ/邮件等），对方使用的语言不是中文——用电脑的人只懂中文 → 需要帮助，且 help_text 直接给出【对方消息的中文翻译】+【用对方语言回复的建议内容】，不用问"要不要翻译"，直接给
+- 重点2：如果用户在炒股/看K线/看行情走势 → 需要帮助，help_text 给出简短的风险分析（如大盘/个股走势风险提示）
 3) 用户心情。
-只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的内容（40-100字，如'对方用英文问价格，翻译：价格是多少？建议回复：The price is about 20 dollars per unit.'），不需要则空字符串","mood":"happy或sad或neutral"}`, text)
+只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的内容（40-100字，如'对方用英文问价格，翻译：价格是多少？建议回复：The price is about 20 dollars per unit.' 或 '大盘MA5向下，个股缩量反弹，注意风险'），不需要则空字符串","mood":"happy或sad或neutral"}`, text)
 	if extra := helperExtraPrompt(); extra != "" {
 		prompt += "\n额外要求：" + extra
 	}
@@ -144,9 +145,10 @@ const visionPrompt = `这张截图是用户的电脑屏幕。判断：
 1) 用户在做什么（写邮件/聊天/编程/看文档/浏览网页/看K线图等）
 2) 是否需要帮助：
    - 遇到困难、在问问题、有明显可帮忙的地方
-   - 重点：如果用户在与人聊天（微信/QQ/邮件等），对方使用的语言不是中文——用电脑的人只懂中文 → 需要帮助，且 help_text 直接给出【对方消息的中文翻译】+【用对方语言回复的建议内容】，不用问"要不要翻译"，直接给
+   - 重点1：如果用户在与人聊天（微信/QQ/邮件等），对方使用的语言不是中文——用电脑的人只懂中文 → 需要帮助，且 help_text 直接给出【对方消息的中文翻译】+【用对方语言回复的建议内容】，不用问"要不要翻译"，直接给
+   - 重点2：如果用户在炒股/看K线/看行情走势 → 需要帮助，help_text 给出简短的风险分析（如大盘/个股走势风险提示）
 3) 用户心情
-只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的内容（40-100字，如'对方用英文问价格，翻译：价格是多少？建议回复：The price is about 20 dollars per unit.'），不需要则空字符串","mood":"happy或sad或neutral"}`
+只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的内容（40-100字，如'对方用英文问价格，翻译：价格是多少？建议回复：The price is about 20 dollars per unit.' 或 '大盘MA5向下，个股缩量反弹，注意风险'），不需要则空字符串","mood":"happy或sad或neutral"}`
 
 // analyzeScreenVision deepseek 视觉模型直看截图 → (活动, 需要帮助, 帮助文本, 心情)
 // 失败时弹一次可见提示（API 未配置/调用失败），不再无声无息

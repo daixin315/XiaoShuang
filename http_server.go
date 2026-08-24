@@ -201,6 +201,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "reply": reply})
 		return
 	}
+	maybeTick() // 时间流转（与窗口输入一致）
 	// 待办命令
 	if reply, handled := handleTodoCommand(text); handled {
 		writeJSON(w, map[string]any{"ok": true, "reply": reply})
@@ -244,6 +245,7 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		}
 		appendChat("assistant", cleanReply)
 		globalAddMsg("assistant", cleanReply)
+		scheduleSummarize() // 回复完成 → 立即总结本轮对话进记忆（与窗口输入完全一致）
 		if isErr {
 			setMoodNow("sad", globalPlayer)
 		} else {

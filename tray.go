@@ -43,6 +43,7 @@ func trayReady() {
 		for {
 			select {
 			case <-mShow.ClickedCh:
+				globalWinVisible = true
 				if trayWindow != nil {
 					trayWindow.Show()
 					trayWindow.RequestFocus()

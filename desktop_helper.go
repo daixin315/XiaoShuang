@@ -353,6 +353,42 @@ func helperTick() {
 	lastActivity = activity
 }
 
+// helperOnce 一次性分析：截图当前桌面 → 分析 → 给建议（点"帮助"按钮，只分析一次）
+func helperOnce() {
+	img := filepath.Join(os.TempDir(), fmt.Sprintf("helper_once_%d.png", time.Now().UnixNano()))
+	defer os.Remove(img)
+	if err := desktopShot(img); err != nil {
+		fmt.Printf("[helper] %v\n", err)
+		globalAddMsg("assistant", "😅 截图失败，帮我看看日志…")
+		return
+	}
+	visionMode := helperVision()
+	if isWindows() {
+		visionMode = "deepseek" // Windows 无 PaddleOCR 环境，强制 DeepSeek Vision
+	}
+	var activity, helpText string
+	var needHelp bool
+	if visionMode == "deepseek" {
+		activity, needHelp, helpText, _ = analyzeScreenVision(img)
+	} else {
+		text, err := ocrDesktop(img)
+		if err != nil || text == "" {
+			fmt.Printf("[helper] OCR: %v\n", err)
+			globalAddMsg("assistant", "😅 没识别出屏幕内容，换 DeepSeek Vision 试试？")
+			return
+		}
+		activity, needHelp, helpText, _ = analyzeScreen(text)
+	}
+	fmt.Printf("[helper] 一次性分析: 活动=%s 帮助=%v\n", activity, needHelp)
+	if needHelp && strings.TrimSpace(helpText) != "" {
+		globalAddMsg("assistant", "👀 看到你在"+activity+"，"+strings.TrimSpace(helpText))
+	} else if activity != "" {
+		globalAddMsg("assistant", "👀 看到你在"+activity+"～看起来一切正常，需要帮忙随时说！")
+	} else {
+		globalAddMsg("assistant", "🤔 没看清你的屏幕在做什么…换个窗口试试？")
+	}
+}
+
 // shotFeatures 读取截图：返回 dHash（64位）+ 64x64 灰度缩略图（内容变化检测）
 func shotFeatures(path string) (uint64, []byte) {
 	f, err := os.Open(path)

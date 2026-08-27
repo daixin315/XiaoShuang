@@ -326,11 +326,34 @@ func runMainWindow(exeDir string) {
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
-	root := container.New(fixedChatLayout{chatH: 75},
-		videoImg,                              // 0: 视频固定顶部
-		bubbleScroll,                          // 1: 对话区固定 75px（约1-2行）
-		container.NewVBox(compose, bottomBar), // 2: 底部按自身高度贴底
+	// ===== 双视图切换：形象视图 ↔ 对话视图（视频和对话框分离）=====
+	showChatBtn := widget.NewButton("💬 显示对话", nil)
+	showMascotBtn := widget.NewButton("🐟 显示小双", nil)
+
+	// 视图A：形象（视频大画面 + 底部"显示对话"按钮）
+	viewVideo := container.NewBorder(
+		nil,
+		container.NewHBox(layout.NewSpacer(), showChatBtn, layout.NewSpacer()),
+		nil, nil,
+		container.NewCenter(videoImg), // 视频保持比例居中
 	)
+	// 视图B：对话（顶部"显示小双"按钮 + 对话区 + 输入 + 底部栏）
+	viewChat := container.NewBorder(
+		container.NewHBox(layout.NewSpacer(), showMascotBtn, layout.NewSpacer()),
+		container.NewVBox(compose, bottomBar),
+		nil, nil,
+		bubbleScroll, // 对话区填满剩余空间
+	)
+	showChatBtn.OnTapped = func() {
+		viewVideo.Hide()
+		viewChat.Show()
+	}
+	showMascotBtn.OnTapped = func() {
+		viewChat.Hide()
+		viewVideo.Show()
+	}
+	viewChat.Hide() // 初始显示形象视图
+	root := container.NewStack(viewVideo, viewChat)
 	w.SetContent(root)
 	startTaskWorker()     // 单线程任务队列（聊天/命令/总结串行）
 	go startHTTPServer()  // 本地 HTTP 命令接口（127.0.0.1:8721）

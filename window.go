@@ -306,7 +306,7 @@ func runMainWindow(exeDir string) {
 	})
 	langSel.SetSelected("中文")
 	langReady = true
-	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(w) })
+	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(chatWin) })
 
 	// 💡 Help 桌面观察：截图OCR看用户在干嘛，需要帮助就弹出文字，心情好/差播表情
 	var helpBtn *widget.Button

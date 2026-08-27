@@ -164,6 +164,7 @@ func runMainWindow(exeDir string) {
 	w := a.NewWindow("小双 🐟")
 	// 高度 = 视频270 + 对话75 + 底部~76，紧凑
 	w.Resize(fyne.NewSize(480, 430))
+	chatWin := a.NewWindow("💬 小双对话") // 对话窗口（独立，双窗口模式）
 
 	// ===== 视频区 =====
 	videoImg := canvas.NewImageFromImage(nil)
@@ -245,7 +246,7 @@ func runMainWindow(exeDir string) {
 		exprItem.ChildMenu = fyne.NewMenu("表情", exprItems...)
 		actItem := fyne.NewMenuItem("🎬 动作", nil)
 		actItem.ChildMenu = fyne.NewMenu("动作", actItems...)
-		cmdMenu = widget.NewPopUpMenu(fyne.NewMenu("", exprItem, actItem), w.Canvas())
+		cmdMenu = widget.NewPopUpMenu(fyne.NewMenu("", exprItem, actItem), chatWin.Canvas())
 		testCmdMenu = cmdMenu
 		// 注意：NewPopUpMenu 默认 OnDismiss = p.Hide()，这里覆盖时必须补回 Hide，
 		// 否则点击外部/点选菜单项后菜单不会消失（fyne 只调用这一处 OnDismiss）
@@ -326,41 +327,38 @@ func runMainWindow(exeDir string) {
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
-	// ===== 双视图切换：形象视图 ↔ 对话视图（视频和对话框分离）=====
-	showChatBtn := widget.NewButton("💬 显示对话", nil)
-	showMascotBtn := widget.NewButton("🐟 显示小双", nil)
-
-	// 视图A：形象（视频大画面 + 底部"显示对话"按钮）
-	viewVideo := container.NewBorder(
+	// ===== 双独立窗口：视频窗口（形象）+ 对话窗口 =====
+	showChatBtn := widget.NewButton("💬 显示对话", func() {
+		chatWin.Show()
+		chatWin.RequestFocus()
+	})
+	showMascotBtn := widget.NewButton("🐟 显示小双", func() {
+		w.Show()
+		w.RequestFocus()
+	})
+	// 视频窗口：形象大画面 + 底部"显示对话"按钮
+	w.SetContent(container.NewBorder(
 		nil,
 		container.NewHBox(layout.NewSpacer(), showChatBtn, layout.NewSpacer()),
 		nil, nil,
 		container.NewCenter(videoImg), // 视频保持比例居中
-	)
-	// 视图B：对话（顶部"显示小双"按钮 + 对话区 + 输入 + 底部栏）
-	viewChat := container.NewBorder(
+	))
+	// 对话窗口：顶部"显示小双"按钮 + 对话区 + 输入 + 底部栏
+	chatWin.SetContent(container.NewBorder(
 		container.NewHBox(layout.NewSpacer(), showMascotBtn, layout.NewSpacer()),
 		container.NewVBox(compose, bottomBar),
 		nil, nil,
-		bubbleScroll, // 对话区填满剩余空间
-	)
-	showChatBtn.OnTapped = func() {
-		viewVideo.Hide()
-		viewChat.Show()
-	}
-	showMascotBtn.OnTapped = func() {
-		viewChat.Hide()
-		viewVideo.Show()
-	}
-	viewChat.Hide() // 初始显示形象视图
-	root := container.NewStack(viewVideo, viewChat)
-	w.SetContent(root)
-	startTaskWorker()     // 单线程任务队列（聊天/命令/总结串行）
-	go startHTTPServer()  // 本地 HTTP 命令接口（127.0.0.1:8721）
-	go startIdleActions() // 空闲随机小动作
-	go startRecallTimer() // 定时回忆
-	go startTodoLoop()    // 待办检查（到点提醒）
-	go startWakeLoop()    // 语音唤醒（喊"小双"）
+		bubbleScroll, // 对话区填满
+	))
+	chatWin.Resize(fyne.NewSize(460, 520))
+	chatWin.SetCloseIntercept(func() { chatWin.Hide() }) // 关闭=隐藏，按钮可再开
+	chatWin.Hide()                                       // 初始只显示视频窗口
+	startTaskWorker()                                    // 单线程任务队列（聊天/命令/总结串行）
+	go startHTTPServer()                                 // 本地 HTTP 命令接口（127.0.0.1:8721）
+	go startIdleActions()                                // 空闲随机小动作
+	go startRecallTimer()                                // 定时回忆
+	go startTodoLoop()                                   // 待办检查（到点提醒）
+	go startWakeLoop()                                   // 语音唤醒（喊"小双"）
 	if os.Getenv("FISH_NO_TRAY") == "" {
 		go startTray(w) // 系统托盘（Linux 需 appindicator）；FISH_NO_TRAY=1 跳过（排查用）
 	}

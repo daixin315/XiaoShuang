@@ -308,22 +308,27 @@ func runMainWindow(exeDir string) {
 	langReady = true
 	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(chatWin) })
 
-	// 💡 Help 桌面观察：截图OCR看用户在干嘛，需要帮助就弹出文字，心情好/差播表情
+	// 💡 实时帮助（原 Help 观察模式改名）：持续截图看用户在干嘛
 	var helpBtn *widget.Button
-	helpBtn = widget.NewButton("💡 Help", func() {
+	helpBtn = widget.NewButton("💡 实时帮助", func() {
 		if isHelperActive() {
 			toggleHelper(false)
-			helpBtn.SetText("💡 Help")
+			helpBtn.SetText("💡 实时帮助")
 		} else {
 			toggleHelper(true)
-			helpBtn.SetText("🟢 Help 中")
+			helpBtn.SetText("🟢 实时帮助中")
 		}
+	})
+	// 🔍 帮助（一次性）：点击立即分析当前桌面并给出建议，只分析一次
+	onceHelpBtn := widget.NewButton("🔍 帮助", func() {
+		globalAddMsg("assistant", "🔍 我看看你屏幕…")
+		helperOnce()
 	})
 
 	// ===== 语音按钮（按住说话）=====
 	recBtn := newHoldButton("🎤 按住说话", startRecord, func() { stopRecordAndSend(addMsg, player) })
 
-	bottomBar := container.NewHBox(menuBtn, helpBtn, recBtn, setBtn, langSel)
+	bottomBar := container.NewHBox(menuBtn, helpBtn, onceHelpBtn, recBtn, setBtn, langSel)
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
@@ -699,9 +704,9 @@ func openSettingsDialog(parent fyne.Window) {
 			widget.NewFormItem("模型", model),
 			widget.NewFormItem("人设", system),
 			widget.NewFormItem("语音识别模型", sttModel),
-			widget.NewFormItem("Help观察间隔(秒)", helpInt),
-			widget.NewFormItem("Help视觉方案", helpVision),
-			widget.NewFormItem("Help补充提示词", helpPrompt),
+			widget.NewFormItem("帮助观察间隔(秒)", helpInt),
+			widget.NewFormItem("帮助视觉方案", helpVision),
+			widget.NewFormItem("帮助补充提示词", helpPrompt),
 		},
 		func(ok bool) {
 			if !ok {

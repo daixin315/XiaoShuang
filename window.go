@@ -197,8 +197,12 @@ func runMainWindow(exeDir string) {
 			msgEntry.MultiLine = true
 			msgEntry.SetText(t)
 			msgEntry.Wrapping = fyne.TextWrapBreak
+			// 标题用小字号（默认字高一半左右，紧凑）
+			title := canvas.NewText(prefix, color.NRGBA{R: 255, G: 255, B: 255, A: 220})
+			title.TextSize = 10
+			title.TextStyle = fyne.TextStyle{Bold: true}
 			content := container.NewVBox(
-				widget.NewLabelWithStyle(prefix, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+				title,
 				msgEntry,
 			)
 			bubble := container.NewStack(bg, container.NewPadded(content))

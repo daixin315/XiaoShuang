@@ -341,12 +341,12 @@ func runMainWindow(exeDir string) {
 		w.Show()
 		w.RequestFocus()
 	})
-	// 视频窗口：形象大画面 + 底部"显示对话"按钮
+	// 视频窗口：形象大画面 + 底部"显示对话"按钮（FillContain 等比填满，拖多大都不变形）
 	w.SetContent(container.NewBorder(
 		nil,
 		container.NewHBox(layout.NewSpacer(), showChatBtn, layout.NewSpacer()),
 		nil, nil,
-		container.NewCenter(videoImg), // 视频保持比例居中
+		videoImg,
 	))
 	// 对话窗口：顶部"显示小双"按钮 + 对话区 + 输入 + 底部栏
 	chatWin.SetContent(container.NewBorder(

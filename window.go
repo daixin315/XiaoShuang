@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -322,12 +323,12 @@ func runMainWindow(exeDir string) {
 		chatWin.Show()
 		chatWin.RequestFocus()
 	})
-	// 视频窗口：形象大画面 + 底部"🎭 表情/动作 + 💬 显示对话"（FillContain 等比填满，随窗口缩放）
-	w.SetContent(container.NewBorder(
-		nil,
-		container.NewHBox(menuBtn, showChatBtn),
-		nil, nil,
+	// 视频窗口：形象大画面 + 左下角"🎭 表情/动作 + 💬 显示对话"（无边框贴纸效果，FillContain 随窗口缩放）
+	// 无边框用 undecorateVideoWindow hack（fyne 无 SetDecorated API）
+	w.SetContent(container.NewStack(
 		videoImg,
+		// 按钮浮在视频左下角（Border 底部行靠左）
+		container.NewBorder(nil, container.NewHBox(menuBtn, showChatBtn), nil, nil, nil),
 	))
 	// 对话窗口：对话区 + 输入 + 底部栏（"显示小双"在左下角）
 	chatWin.SetContent(container.NewBorder(
@@ -340,11 +341,14 @@ func runMainWindow(exeDir string) {
 	chatWin.SetCloseIntercept(func() { chatWin.Hide() }) // 关闭=隐藏，按钮可再开
 	chatWin.Hide()                                       // 初始只显示视频窗口
 	startTaskWorker()                                    // 单线程任务队列（聊天/命令/总结串行）
-	go startHTTPServer()                                 // 本地 HTTP 命令接口（127.0.0.1:8721）
-	go startIdleActions()                                // 空闲随机小动作
-	go startRecallTimer()                                // 定时回忆
-	go startTodoLoop()                                   // 待办检查（到点提醒）
-	go startWakeLoop()                                   // 语音唤醒（喊"小双"）
+	if !isWindows() {
+		undecorateVideoWindow() // Linux 无边框 hack（视频窗口去标题栏）
+	}
+	go startHTTPServer()  // 本地 HTTP 命令接口（127.0.0.1:8721）
+	go startIdleActions() // 空闲随机小动作
+	go startRecallTimer() // 定时回忆
+	go startTodoLoop()    // 待办检查（到点提醒）
+	go startWakeLoop()    // 语音唤醒（喊"小双"）
 	if os.Getenv("FISH_NO_TRAY") == "" {
 		go startTray(w) // 系统托盘（Linux 需 appindicator）；FISH_NO_TRAY=1 跳过（排查用）
 	}
@@ -358,6 +362,19 @@ func runMainWindow(exeDir string) {
 	})
 
 	w.ShowAndRun()
+}
+
+// undecorateVideoWindow Linux 无边框 hack：fyne 无 SetDecorated API，
+// 用 xprop _MOTIF_WM_HINTS 去掉视频窗口标题栏（GNOME Wayland 对 Xwayland 窗口生效）
+func undecorateVideoWindow() {
+	go func() {
+		time.Sleep(3 * time.Second) // 等窗口创建完成
+		script := `for id in $(DISPLAY=:0 xdotool search --name "小双" 2>/dev/null); do
+  geo=$(DISPLAY=:0 xdotool getwindowgeometry $id 2>/dev/null | grep Geometry)
+  case "$geo" in *480x340*) DISPLAY=:0 xprop -id $id -f _MOTIF_WM_HINTS 32c -set _MOTIF_WM_HINTS "0x2, 0x0, 0x0, 0x0, 0x0" 2>/dev/null;; esac
+done`
+		exec.Command("sh", "-c", script).Run()
+	}()
 }
 
 // playExpr 播放表情动画（循环，保持情绪），并写入 mood.json

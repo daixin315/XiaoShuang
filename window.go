@@ -287,9 +287,13 @@ func runMainWindow(exeDir string) {
 	}
 	compose := container.NewBorder(nil, nil, nil, sendBtn, input)
 
-	// ===== 底部栏（帮助 + 设置；表情/动作按钮在视频窗口）=====
+	// ===== 底部栏（显示小双 + 帮助 + 设置；表情/动作按钮在视频窗口）=====
 	var menuBtn *widget.Button
 	menuBtn = widget.NewButton("🎭 表情/动作", func() { showCmdMenu(w.Canvas(), menuBtn) })
+	showMascotBtn := widget.NewButton("🐟 显示小双", func() {
+		w.Show()
+		w.RequestFocus()
+	})
 	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(chatWin) })
 
 	// 🔍 帮助（一次性）：点击立即分析当前桌面并给出建议，只分析一次
@@ -309,7 +313,7 @@ func runMainWindow(exeDir string) {
 		}
 	})
 
-	bottomBar := container.NewHBox(onceHelpBtn, helpBtn, setBtn)
+	bottomBar := container.NewHBox(showMascotBtn, onceHelpBtn, helpBtn, setBtn)
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
@@ -318,10 +322,6 @@ func runMainWindow(exeDir string) {
 		chatWin.Show()
 		chatWin.RequestFocus()
 	})
-	showMascotBtn := widget.NewButton("🐟 显示小双", func() {
-		w.Show()
-		w.RequestFocus()
-	})
 	// 视频窗口：形象大画面 + 底部"🎭 表情/动作 + 💬 显示对话"（FillContain 等比填满，随窗口缩放）
 	w.SetContent(container.NewBorder(
 		nil,
@@ -329,9 +329,9 @@ func runMainWindow(exeDir string) {
 		nil, nil,
 		videoImg,
 	))
-	// 对话窗口：顶部"显示小双"按钮 + 对话区 + 输入 + 底部栏
+	// 对话窗口：对话区 + 输入 + 底部栏（"显示小双"在左下角）
 	chatWin.SetContent(container.NewBorder(
-		container.NewHBox(layout.NewSpacer(), showMascotBtn, layout.NewSpacer()),
+		nil,
 		container.NewVBox(compose, bottomBar),
 		nil, nil,
 		bubbleScroll, // 对话区填满

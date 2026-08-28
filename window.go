@@ -6,18 +6,15 @@ import (
 	"image/color"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
@@ -286,30 +283,17 @@ func runMainWindow(exeDir string) {
 	}
 	compose := container.NewBorder(nil, nil, nil, sendBtn, input)
 
-	// ===== 底部栏（语言 + 设置 + 帮助等；表情/动作按钮在视频窗口）=====
+	// ===== 底部栏（帮助 + 设置；表情/动作按钮在视频窗口）=====
 	var menuBtn *widget.Button
 	menuBtn = widget.NewButton("🎭 表情/动作", func() { showCmdMenu(w.Canvas(), menuBtn) })
-	langReady := false // 启动时 SetSelected 触发一次回调，跳过提示
-	langSel := widget.NewSelect([]string{"中文", "English"}, func(v string) {
-		settingsMu.Lock()
-		if v == "English" {
-			settings.System = "You are a cute and gentle girl named Xiaoshuang, a Pisces. Reply briefly and warmly, like a friend. Always reply in English, no matter what language the user writes in."
-		} else {
-			settings.System = "你是一个温柔可爱的少女，名字叫小双，是双鱼座。回复要简短自然，语气温柔亲切，像朋友一样聊天。无论对方用什么语言提问，都用中文回复。"
-		}
-		settingsMu.Unlock()
-		if err := saveSettings(); err != nil {
-			fmt.Printf("[settings] 语言切换保存失败: %v\n", err)
-		} // 持久化，重启不丢
-		if langReady {
-			addMsg("assistant", "🌍 已切换到"+v+"模式，之后我都会用"+v+"回复")
-		}
-	})
-	langSel.SetSelected("中文")
-	langReady = true
 	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(chatWin) })
 
-	// 💡 实时帮助（原 Help 观察模式改名）：持续截图看用户在干嘛
+	// 🔍 帮助（一次性）：点击立即分析当前桌面并给出建议，只分析一次
+	onceHelpBtn := widget.NewButton("🔍 帮助", func() {
+		globalAddMsg("assistant", "🔍 我看看你屏幕…")
+		helperOnce()
+	})
+	// 💡 实时帮助（持续观察模式）：截图看用户在干嘛，需要帮助才提醒
 	var helpBtn *widget.Button
 	helpBtn = widget.NewButton("💡 实时帮助", func() {
 		if isHelperActive() {
@@ -320,16 +304,8 @@ func runMainWindow(exeDir string) {
 			helpBtn.SetText("🟢 实时帮助中")
 		}
 	})
-	// 🔍 帮助（一次性）：点击立即分析当前桌面并给出建议，只分析一次
-	onceHelpBtn := widget.NewButton("🔍 帮助", func() {
-		globalAddMsg("assistant", "🔍 我看看你屏幕…")
-		helperOnce()
-	})
 
-	// ===== 语音按钮（按住说话）=====
-	recBtn := newHoldButton("🎤 按住说话", startRecord, func() { stopRecordAndSend(addMsg, player) })
-
-	bottomBar := container.NewHBox(helpBtn, onceHelpBtn, recBtn, setBtn, langSel)
+	bottomBar := container.NewHBox(onceHelpBtn, helpBtn, setBtn)
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
@@ -549,112 +525,6 @@ func setMoodNow(emotion string, player *VideoPlayer) {
 	}
 }
 
-// ---------- 录音 ----------
-var (
-	recCmd  *exec.Cmd
-	recFile string
-	recMu   sync.Mutex
-)
-
-func startRecord() {
-	recMu.Lock()
-	defer recMu.Unlock()
-	if recCmd != nil {
-		return
-	}
-	recFile = filepath.Join(os.TempDir(), fmt.Sprintf("voice_%d.wav", time.Now().UnixNano()))
-	settingsMu.RLock()
-	dev := settings.RecordDev
-	settingsMu.RUnlock()
-
-	var cmd *exec.Cmd
-	switch {
-	case isWindows():
-		d := dev
-		if d == "" {
-			d = "麦克风"
-		}
-		cmd = exec.Command("ffmpeg", "-y", "-f", "dshow", "-i", "audio="+d, recFile)
-		hideWindow(cmd) // Windows 不弹控制台窗口
-	case isDarwin():
-		cmd = exec.Command("ffmpeg", "-y", "-f", "avfoundation", "-i", ":0", recFile)
-	default:
-		cmd = exec.Command("ffmpeg", "-y", "-f", "pulse", "-i", "default", recFile)
-	}
-	if err := cmd.Start(); err == nil {
-		recCmd = cmd
-	}
-}
-
-func stopRecordAndSend(addMsg func(string, string), player *VideoPlayer) {
-	recMu.Lock()
-	cmd := recCmd
-	recCmd = nil
-	f := recFile
-	recMu.Unlock()
-	if cmd == nil {
-		return
-	}
-	cmd.Process.Signal(os.Interrupt)
-	go func() {
-		cmd.Wait()
-		for i := 0; i < 10 && !fileExists(f); i++ {
-			time.Sleep(200 * time.Millisecond)
-		}
-		if !fileExists(f) {
-			addMsg("assistant", "⚠️ 录音失败，请检查麦克风")
-			return
-		}
-		addMsg("user", "🎤 (语音…)")
-		text, err := sttLocal(f)
-		os.Remove(f)
-		if err != nil || strings.TrimSpace(text) == "" {
-			addMsg("assistant", "⚠️ 没听清，再说一次？")
-			return
-		}
-		addMsg("user", text)
-		appendChat("user", text) // 持久化
-		scheduleSummarize()      // 语音发言也算对话活跃
-
-		setMoodNow("think", player)
-		// 忙时提示：小双正在干活，语音消息不入队
-		if isTaskBusy() {
-			addMsg("assistant", "🫥 小双正在忙，等我一下下～")
-			setMoodNow("idle", player)
-			return
-		}
-		// AI 回复排队串行（不阻塞录音流程，但回复和主对话互斥）
-		enqueue(func() {
-			h := recentHistory(chatAICtxMax)
-			reply, err := chatWithAI(h)
-			isErr := err != nil
-			if isErr {
-				reply = friendlyChatError(err)
-			}
-			// 解析 AI 选择的表演动作/表情
-			cleanReply, actName := extractAction(reply)
-			if !isErr && actName != "" {
-				playExtractedAction(actName, player)
-			}
-			addMsg("assistant", cleanReply)
-			appendChat("assistant", cleanReply) // 持久化
-			scheduleSummarize()                 // 回复完成 → 立即总结本轮对话进记忆（语音路径）
-			if isErr {
-				setMoodNow("sad", player)
-				return
-			}
-			setMoodNow("happy", player)
-
-			if !strings.HasPrefix(reply, "⚠️") {
-				mp3 := strings.TrimSuffix(f, ".wav") + ".mp3"
-				if err := ttsEdge(reply, mp3); err == nil {
-					playAudio(mp3)
-				}
-			}
-		})
-	}()
-}
-
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
@@ -741,47 +611,4 @@ func openSettingsDialog(parent fyne.Window) {
 		}, parent)
 	form.Resize(fyne.NewSize(420, 520))
 	form.Show()
-}
-
-// ---------- 按住按钮 ----------
-type holdButton struct {
-	widget.BaseWidget
-	label    string
-	onPress  func()
-	onRelase func()
-}
-
-func newHoldButton(label string, onPress, onRelease func()) *holdButton {
-	b := &holdButton{label: label, onPress: onPress, onRelase: onRelease}
-	b.ExtendBaseWidget(b)
-	return b
-}
-
-func (b *holdButton) CreateRenderer() fyne.WidgetRenderer {
-	btn := widget.NewButton(b.label, nil)
-	// 不能 Disable()：灰了之后用户以为不可用；按住逻辑靠 MouseDown/MouseUp 驱动
-	return widget.NewSimpleRenderer(btn)
-}
-
-var holdPressed bool
-
-// Tapped 空实现：按住逻辑由 MouseDown/MouseUp 驱动，避免点击松开时双触发 onRelase
-func (b *holdButton) Tapped(_ *fyne.PointEvent) {}
-
-func (b *holdButton) MouseDown(_ *desktop.MouseEvent) {
-	if !holdPressed {
-		holdPressed = true
-		if b.onPress != nil {
-			b.onPress()
-		}
-	}
-}
-
-func (b *holdButton) MouseUp(_ *desktop.MouseEvent) {
-	if holdPressed {
-		holdPressed = false
-		if b.onRelase != nil {
-			b.onRelase()
-		}
-	}
 }

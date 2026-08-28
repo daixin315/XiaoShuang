@@ -541,6 +541,50 @@ func playAudio(path string) {
 }
 
 // ---------- 设置窗口 ----------
+// setSettingString 按字段名更新设置并保存（提示词对话框用）
+func setSettingString(field, val string) {
+	settingsMu.Lock()
+	switch field {
+	case "System":
+		settings.System = val
+	case "HelpOncePrompt":
+		settings.HelpOncePrompt = val
+	case "HelpLivePrompt":
+		settings.HelpLivePrompt = val
+	}
+	settingsMu.Unlock()
+	if err := saveSettings(); err != nil {
+		fmt.Printf("[settings] 保存失败: %v\n", err)
+	}
+}
+
+// openPromptDialog 提示词编辑对话框：取消/默认/保存（默认=恢复内置原始文本）
+func openPromptDialog(parent fyne.Window, title, current, def string, save func(string)) {
+	entry := widget.NewMultiLineEntry()
+	entry.SetText(current)
+	entry.Wrapping = fyne.TextWrapBreak
+	var d *dialog.CustomDialog
+	cancelBtn := widget.NewButton("取消", func() {
+		if d != nil {
+			d.Hide()
+		}
+	})
+	defBtn := widget.NewButton("默认", func() { entry.SetText(def) })
+	saveBtn := widget.NewButton("保存", func() {
+		save(entry.Text)
+		if d != nil {
+			d.Hide()
+		}
+	})
+	content := container.NewVBox(
+		entry,
+		container.NewHBox(cancelBtn, defBtn, saveBtn),
+	)
+	d = dialog.NewCustom(title, "", content, parent)
+	d.Resize(fyne.NewSize(500, 340))
+	d.Show()
+}
+
 func openSettingsDialog(parent fyne.Window) {
 	settingsMu.RLock()
 	s := settings
@@ -552,32 +596,32 @@ func openSettingsDialog(parent fyne.Window) {
 	key.SetText(s.APIKey)
 	model := widget.NewEntry()
 	model.SetText(s.Model)
-	system := widget.NewMultiLineEntry()
-	system.SetText(s.System)
 	sttModel := widget.NewSelectEntry([]string{"tiny", "base", "small", "medium", "large-v3"})
 	sttModel.SetText(s.STTModel)
 	helpInt := widget.NewEntry()
 	helpInt.SetText(fmt.Sprintf("%d", helperInterval()))
-	helpVision := widget.NewSelect([]string{"DeepSeek Vision", "飞桨 OCR"}, func(string) {})
-	if helperVision() == "paddle" {
-		helpVision.SetSelected("飞桨 OCR")
-	} else {
-		helpVision.SetSelected("DeepSeek Vision")
-	}
-	helpPrompt := widget.NewMultiLineEntry()
-	helpPrompt.SetText(helperExtraPrompt())
-	helpPrompt.SetPlaceHolder("附加在默认判断规则后的补充要求，如：如果用户在炒股/看K线，帮我分析大盘风险")
+
+	// 3 个提示词设置按钮（各自弹对话框：取消/默认/保存）
+	promptBtns := container.NewHBox(
+		widget.NewButton("✏️ 基本人设", func() {
+			openPromptDialog(parent, "✏️ 基本人设", s.System, defaultSettings().System, func(t string) { setSettingString("System", t) })
+		}),
+		widget.NewButton("✏️ 帮助设置", func() {
+			openPromptDialog(parent, "✏️ 帮助设置", helperOncePrompt(), visionPrompt, func(t string) { setSettingString("HelpOncePrompt", t) })
+		}),
+		widget.NewButton("✏️ 实时帮助设置", func() {
+			openPromptDialog(parent, "✏️ 实时帮助设置", helperLivePrompt(), visionPrompt, func(t string) { setSettingString("HelpLivePrompt", t) })
+		}),
+	)
 
 	form := dialog.NewForm("⚙️ 设置", "保存", "取消",
 		[]*widget.FormItem{
 			widget.NewFormItem("API 地址", base),
 			widget.NewFormItem("API Key", key),
 			widget.NewFormItem("模型", model),
-			widget.NewFormItem("人设", system),
 			widget.NewFormItem("语音识别模型", sttModel),
 			widget.NewFormItem("帮助观察间隔(秒)", helpInt),
-			widget.NewFormItem("帮助视觉方案", helpVision),
-			widget.NewFormItem("帮助补充提示词", helpPrompt),
+			widget.NewFormItem("提示词设置", promptBtns),
 		},
 		func(ok bool) {
 			if !ok {
@@ -587,19 +631,12 @@ func openSettingsDialog(parent fyne.Window) {
 			if iv <= 0 {
 				iv = helperDefaultInt
 			}
-			visionMode := "deepseek"
-			if helpVision.Selected == "飞桨 OCR" {
-				visionMode = "paddle"
-			}
 			settingsMu.Lock()
 			settings.BaseURL = strings.TrimSpace(base.Text)
 			settings.APIKey = strings.TrimSpace(key.Text)
 			settings.Model = strings.TrimSpace(model.Text)
-			settings.System = system.Text
 			settings.STTModel = sttModel.Text
 			settings.HelpInterval = iv
-			settings.HelpVision = visionMode
-			settings.HelpPrompt = helpPrompt.Text
 			settingsMu.Unlock()
 			if err := saveSettings(); err != nil {
 				fmt.Printf("[settings] 保存失败: %v\n", err)

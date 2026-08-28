@@ -345,7 +345,6 @@ func runMainWindow(exeDir string) {
 	go startIdleActions()                                // 空闲随机小动作
 	go startRecallTimer()                                // 定时回忆
 	go startTodoLoop()                                   // 待办检查（到点提醒）
-	go startWakeLoop()                                   // 语音唤醒（喊"小双"）
 	if os.Getenv("FISH_NO_TRAY") == "" {
 		go startTray(w) // 系统托盘（Linux 需 appindicator）；FISH_NO_TRAY=1 跳过（排查用）
 	}
@@ -674,8 +673,6 @@ func openSettingsDialog(parent fyne.Window) {
 		}),
 	)
 
-	sttModel := widget.NewSelectEntry([]string{"tiny", "base", "small", "medium", "large-v3"})
-	sttModel.SetText(s.STTModel)
 	helpInt := widget.NewEntry()
 	helpInt.SetText(fmt.Sprintf("%d", helperInterval()))
 
@@ -695,7 +692,6 @@ func openSettingsDialog(parent fyne.Window) {
 	form := dialog.NewForm("⚙️ 设置", "保存", "取消",
 		[]*widget.FormItem{
 			widget.NewFormItem("模型设置", modelBtns),
-			widget.NewFormItem("语音识别模型", sttModel),
 			widget.NewFormItem("帮助观察间隔(秒)", helpInt),
 			widget.NewFormItem("提示词设置", promptBtns),
 		},
@@ -708,7 +704,6 @@ func openSettingsDialog(parent fyne.Window) {
 				iv = helperDefaultInt
 			}
 			settingsMu.Lock()
-			settings.STTModel = sttModel.Text
 			settings.HelpInterval = iv
 			settingsMu.Unlock()
 			if err := saveSettings(); err != nil {

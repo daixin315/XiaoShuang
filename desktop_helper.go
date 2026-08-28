@@ -126,9 +126,6 @@ func analyzeScreen(text string) (string, bool, string, string) {
 - 重点2：如果用户在炒股/看K线/看行情走势 → 需要帮助，help_text 给出简短的风险分析（如大盘/个股走势风险提示）
 3) 用户心情。
 只输出JSON：{"activity":"简短活动描述","need_help":true或false,"help_text":"需要帮助时的内容（40-100字，如'对方用英文问价格，翻译：价格是多少？建议回复：The price is about 20 dollars per unit.' 或 '大盘MA5向下，个股缩量反弹，注意风险'），不需要则空字符串","mood":"happy或sad或neutral"}`, text)
-	if extra := helperExtraPrompt(); extra != "" {
-		prompt += "\n额外要求：" + extra
-	}
 	msgs := []ChatMessage{
 		{Role: "system", Content: "你是桌面观察助手，只输出JSON。"},
 		{Role: "user", Content: prompt},
@@ -153,7 +150,7 @@ const visionPrompt = `这张截图是用户的电脑屏幕。判断：
 // analyzeScreenVision deepseek 视觉模型直看截图 → (活动, 需要帮助, 帮助文本, 心情)
 // 失败时弹一次可见提示（API 未配置/调用失败），不再无声无息
 func analyzeScreenVision(imgPath string) (string, bool, string, string) {
-	reply, err := visionAnalyze(imgPath, buildVisionPrompt())
+	reply, err := visionAnalyze(imgPath, helperLivePrompt())
 	if err != nil {
 		fmt.Printf("[helper] vision 失败: %v\n", err)
 		helperMu.Lock()
@@ -363,13 +360,10 @@ func helperOnce() {
 		return
 	}
 	visionMode := helperVision()
-	if isWindows() {
-		visionMode = "deepseek" // Windows 无 PaddleOCR 环境，强制 DeepSeek Vision
-	}
 	var activity, helpText string
 	var needHelp bool
 	if visionMode == "deepseek" {
-		activity, needHelp, helpText, _ = analyzeScreenVision(img)
+		activity, needHelp, helpText, _ = analyzeScreenVisionOnce(img)
 	} else {
 		text, err := ocrDesktop(img)
 		if err != nil || text == "" {
@@ -387,6 +381,16 @@ func helperOnce() {
 	} else {
 		globalAddMsg("assistant", "🤔 没看清你的屏幕在做什么…换个窗口试试？")
 	}
+}
+
+// analyzeScreenVisionOnce 一次性"帮助"的视觉分析（用独立的提示词设置）
+func analyzeScreenVisionOnce(imgPath string) (string, bool, string, string) {
+	reply, err := visionAnalyze(imgPath, helperOncePrompt())
+	if err != nil {
+		fmt.Printf("[helper] vision 失败: %v\n", err)
+		return "", false, "", "neutral"
+	}
+	return parseScreenJSON(reply)
 }
 
 // shotFeatures 读取截图：返回 dHash（64位）+ 64x64 灰度缩略图（内容变化检测）

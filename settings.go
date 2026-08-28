@@ -10,20 +10,22 @@ import (
 
 // Settings 侧边栏接入配置（存 exe 同目录 settings.json）
 type Settings struct {
-	BaseURL      string `json:"base_url"`      // OpenAI 兼容 API 地址
-	APIKey       string `json:"api_key"`       // API Key
-	Model        string `json:"model"`         // 对话模型
-	System       string `json:"system"`        // 系统提示词（人设）
-	STTMode      string `json:"stt_mode"`      // local(whisper) | openai
-	STTModel     string `json:"stt_model"`     // 本地 whisper 模型（small/medium）
-	STTCmd       string `json:"stt_cmd"`       // 本地 STT 调用命令（含 venv python）
-	TTSMode      string `json:"tts_mode"`      // edge | openai
-	TTSVoice     string `json:"tts_voice"`     // edge 音色
-	TTSBin       string `json:"tts_bin"`       // edge-tts 可执行路径
-	RecordDev    string `json:"record_dev"`    // 录音设备（ffmpeg 参数）
-	HelpInterval int    `json:"help_interval"` // Help 桌面观察间隔（秒，默认5）
-	HelpVision   string `json:"help_vision"`   // Help 视觉方案: deepseek(默认) | paddle
-	HelpPrompt   string `json:"help_prompt"`   // Help 分析补充提示词（附加在默认判断规则后，可空）
+	BaseURL        string `json:"base_url"`         // OpenAI 兼容 API 地址
+	APIKey         string `json:"api_key"`          // API Key
+	Model          string `json:"model"`            // 对话模型
+	System         string `json:"system"`           // 系统提示词（人设）
+	STTMode        string `json:"stt_mode"`         // local(whisper) | openai
+	STTModel       string `json:"stt_model"`        // 本地 whisper 模型（small/medium）
+	STTCmd         string `json:"stt_cmd"`          // 本地 STT 调用命令（含 venv python）
+	TTSMode        string `json:"tts_mode"`         // edge | openai
+	TTSVoice       string `json:"tts_voice"`        // edge 音色
+	TTSBin         string `json:"tts_bin"`          // edge-tts 可执行路径
+	RecordDev      string `json:"record_dev"`       // 录音设备（ffmpeg 参数，已废弃保留兼容）
+	HelpInterval   int    `json:"help_interval"`    // Help 桌面观察间隔（秒，默认5）
+	HelpVision     string `json:"help_vision"`      // 已废弃（固定 DeepSeek Vision），保留兼容旧配置
+	HelpPrompt     string `json:"help_prompt"`      // 已废弃（由 HelpOncePrompt/HelpLivePrompt 取代）
+	HelpOncePrompt string `json:"help_once_prompt"` // 一次性"帮助"完整提示词（空=内置默认）
+	HelpLivePrompt string `json:"help_live_prompt"` // "实时帮助"完整提示词（空=内置默认）
 }
 
 // helperInterval 读取 Help 观察间隔（0或未配 → 默认5秒）
@@ -36,30 +38,29 @@ func helperInterval() int {
 	return helperDefaultInt
 }
 
-// helperVision 读取 Help 视觉方案（默认 paddle 飞桨——主要场景是文字帮助，OCR 够用）
+// helperVision 视觉方案：固定 DeepSeek Vision（OCR 选项已废弃，用户确认无用）
 func helperVision() string {
-	settingsMu.RLock()
-	defer settingsMu.RUnlock()
-	if settings.HelpVision == "deepseek" {
-		return "deepseek"
-	}
-	return "paddle"
+	return "deepseek"
 }
 
-// helperExtraPrompt 读取 Help 补充提示词（设置里可改，附加在默认判断规则后）
-func helperExtraPrompt() string {
+// helperOncePrompt 一次性"帮助"的完整提示词（设置里可改，空=内置默认）
+func helperOncePrompt() string {
 	settingsMu.RLock()
 	defer settingsMu.RUnlock()
-	return strings.TrimSpace(settings.HelpPrompt)
+	if s := strings.TrimSpace(settings.HelpOncePrompt); s != "" {
+		return s
+	}
+	return visionPrompt
 }
 
-// buildVisionPrompt 组装 Help 分析提示词 = 默认规则 + 用户补充要求
-func buildVisionPrompt() string {
-	extra := helperExtraPrompt()
-	if extra == "" {
-		return visionPrompt
+// helperLivePrompt "实时帮助"的完整提示词（设置里可改，空=内置默认）
+func helperLivePrompt() string {
+	settingsMu.RLock()
+	defer settingsMu.RUnlock()
+	if s := strings.TrimSpace(settings.HelpLivePrompt); s != "" {
+		return s
 	}
-	return visionPrompt + "\n额外要求：" + extra
+	return visionPrompt
 }
 
 // readSudoPass 读 sudo 密码（独立文件 sudo_pass.txt，gitignore，避免被 saveSettings 覆盖）

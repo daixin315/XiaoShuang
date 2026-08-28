@@ -26,6 +26,9 @@ type Settings struct {
 	HelpPrompt     string `json:"help_prompt"`      // 已废弃（由 HelpOncePrompt/HelpLivePrompt 取代）
 	HelpOncePrompt string `json:"help_once_prompt"` // 一次性"帮助"完整提示词（空=内置默认）
 	HelpLivePrompt string `json:"help_live_prompt"` // "实时帮助"完整提示词（空=内置默认）
+	VisionBaseURL  string `json:"vision_base_url"`  // 视觉模型 API 地址（空=用对话 BaseURL）
+	VisionAPIKey   string `json:"vision_api_key"`   // 视觉模型 Key（空=用对话 APIKey）
+	VisionModel    string `json:"vision_model"`     // 视觉模型名（空=deepseek-v4-flash-vision-exp）
 }
 
 // helperInterval 读取 Help 观察间隔（0或未配 → 默认5秒）

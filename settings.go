@@ -139,6 +139,30 @@ func loadSettings(dir string) {
 			if s.RecordDev != "" {
 				d.RecordDev = s.RecordDev
 			}
+			if s.HelpInterval > 0 {
+				d.HelpInterval = s.HelpInterval
+			}
+			if s.HelpVision != "" {
+				d.HelpVision = s.HelpVision
+			}
+			if s.HelpPrompt != "" {
+				d.HelpPrompt = s.HelpPrompt
+			}
+			if s.HelpOncePrompt != "" {
+				d.HelpOncePrompt = s.HelpOncePrompt
+			}
+			if s.HelpLivePrompt != "" {
+				d.HelpLivePrompt = s.HelpLivePrompt
+			}
+			if s.VisionBaseURL != "" {
+				d.VisionBaseURL = s.VisionBaseURL
+			}
+			if s.VisionAPIKey != "" {
+				d.VisionAPIKey = s.VisionAPIKey
+			}
+			if s.VisionModel != "" {
+				d.VisionModel = s.VisionModel
+			}
 			settings = d
 		}
 	}

@@ -23,14 +23,8 @@ func startWakeLoop() {
 		fmt.Println("[wake] 唤醒监听已启动（喊“小双”试试）")
 		for {
 			time.Sleep(4 * time.Second)
-			// 忙/正在手动录音时跳过
+			// 忙时跳过（按住说话已删除，无需录音互斥）
 			if isTaskBusy() {
-				continue
-			}
-			recMu.Lock()
-			recording := recCmd != nil
-			recMu.Unlock()
-			if recording {
 				continue
 			}
 			// 录 3 秒 → tiny 识别

@@ -168,8 +168,7 @@ func runMainWindow(exeDir string) {
 
 	// ===== 视频区 =====
 	videoImg := canvas.NewImageFromImage(nil)
-	videoImg.FillMode = canvas.ImageFillContain
-	videoImg.SetMinSize(fyne.NewSize(480, 270))
+	videoImg.FillMode = canvas.ImageFillContain // 随窗口缩放，保持比例不变形（无 MinSize，可任意缩小）
 	globalVideoImg = videoImg
 	player := NewVideoPlayer(videoImg)
 	globalPlayer = player
@@ -220,8 +219,9 @@ func runMainWindow(exeDir string) {
 	input.SetPlaceHolder("输入 / 打开表情·动作菜单，或直接聊天…")
 
 	// "/" 命令菜单：输入 / 弹出表情+动作选择，点选/回车执行
+	// canvas/anchor 参数化：视频窗口按钮 → 视频窗口 canvas；对话输入 → 对话窗口 canvas
 	var cmdMenu *widget.PopUpMenu
-	showCmdMenu := func() {
+	showCmdMenu := func(c fyne.Canvas, anchor fyne.CanvasObject) {
 		fmt.Println("[menu] showCmdMenu 调用")
 		if cmdMenu != nil {
 			cmdMenu.Hide()
@@ -246,7 +246,7 @@ func runMainWindow(exeDir string) {
 		exprItem.ChildMenu = fyne.NewMenu("表情", exprItems...)
 		actItem := fyne.NewMenuItem("🎬 动作", nil)
 		actItem.ChildMenu = fyne.NewMenu("动作", actItems...)
-		cmdMenu = widget.NewPopUpMenu(fyne.NewMenu("", exprItem, actItem), chatWin.Canvas())
+		cmdMenu = widget.NewPopUpMenu(fyne.NewMenu("", exprItem, actItem), c)
 		testCmdMenu = cmdMenu
 		// 注意：NewPopUpMenu 默认 OnDismiss = p.Hide()，这里覆盖时必须补回 Hide，
 		// 否则点击外部/点选菜单项后菜单不会消失（fyne 只调用这一处 OnDismiss）
@@ -257,14 +257,14 @@ func runMainWindow(exeDir string) {
 				input.SetText("")
 			}
 		}
-		// 显示在输入框上方
-		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(input)
+		// 显示在触发按钮/输入框上方
+		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
 		cmdMenu.ShowAtPosition(pos.Add(fyne.NewPos(0, -30)))
 	}
 	input.OnChanged = func(text string) {
 		if strings.TrimSpace(text) == "/" {
 			fmt.Println("[menu] 输入 / 触发菜单")
-			showCmdMenu()
+			showCmdMenu(chatWin.Canvas(), input)
 		}
 	}
 
@@ -279,15 +279,16 @@ func runMainWindow(exeDir string) {
 	input.OnSubmitted = func(_ string) {
 		text := strings.TrimSpace(input.Text)
 		if text == "/" {
-			showCmdMenu() // 输入 / 后直接回车也弹菜单
+			showCmdMenu(chatWin.Canvas(), input) // 输入 / 后直接回车也弹菜单
 			return
 		}
 		sendBtn.OnTapped()
 	}
 	compose := container.NewBorder(nil, nil, nil, sendBtn, input)
 
-	// ===== 底部栏（表情动作菜单 + 语言 + 设置）=====
-	menuBtn := widget.NewButton("🎭 表情/动作", func() { showCmdMenu() })
+	// ===== 底部栏（语言 + 设置 + 帮助等；表情/动作按钮在视频窗口）=====
+	var menuBtn *widget.Button
+	menuBtn = widget.NewButton("🎭 表情/动作", func() { showCmdMenu(w.Canvas(), menuBtn) })
 	langReady := false // 启动时 SetSelected 触发一次回调，跳过提示
 	langSel := widget.NewSelect([]string{"中文", "English"}, func(v string) {
 		settingsMu.Lock()
@@ -328,7 +329,7 @@ func runMainWindow(exeDir string) {
 	// ===== 语音按钮（按住说话）=====
 	recBtn := newHoldButton("🎤 按住说话", startRecord, func() { stopRecordAndSend(addMsg, player) })
 
-	bottomBar := container.NewHBox(menuBtn, helpBtn, onceHelpBtn, recBtn, setBtn, langSel)
+	bottomBar := container.NewHBox(helpBtn, onceHelpBtn, recBtn, setBtn, langSel)
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
@@ -341,10 +342,10 @@ func runMainWindow(exeDir string) {
 		w.Show()
 		w.RequestFocus()
 	})
-	// 视频窗口：形象大画面 + 底部"显示对话"按钮（FillContain 等比填满，拖多大都不变形）
+	// 视频窗口：形象大画面 + 底部"🎭 表情/动作 + 💬 显示对话"（FillContain 等比填满，随窗口缩放）
 	w.SetContent(container.NewBorder(
 		nil,
-		container.NewHBox(layout.NewSpacer(), showChatBtn, layout.NewSpacer()),
+		container.NewHBox(menuBtn, showChatBtn),
 		nil, nil,
 		videoImg,
 	))

@@ -160,8 +160,8 @@ func runMainWindow(exeDir string) {
 		a = app.NewWithID("fish.desktop.avatar")
 	}
 	w := a.NewWindow("小双 🐟")
-	// 高度贴合视频(270) + 底部按钮(≈40) + 边距，无上下留白
-	w.Resize(fyne.NewSize(480, 340))
+	// 高度贴合视频(270) + 底部按钮(≈40)，无上下留白
+	w.Resize(fyne.NewSize(480, 310))
 	chatWin := a.NewWindow("💬 小双对话") // 对话窗口（独立，双窗口模式）
 
 	// ===== 视频区 =====

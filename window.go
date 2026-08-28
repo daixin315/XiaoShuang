@@ -332,7 +332,7 @@ func runMainWindow(exeDir string) {
 		nil, nil,
 		bubbleScroll, // 对话区填满
 	))
-	chatWin.Resize(fyne.NewSize(460, 520))
+	chatWin.Resize(fyne.NewSize(460, 400))
 	chatWin.SetCloseIntercept(func() { chatWin.Hide() }) // 关闭=隐藏，按钮可再开
 	chatWin.Hide()                                       // 初始只显示视频窗口
 	startTaskWorker()                                    // 单线程任务队列（聊天/命令/总结串行）

@@ -540,6 +540,74 @@ func playAudio(path string) {
 	}()
 }
 
+// saveChatModel 保存对话模型设置（对话模型对话框）
+func saveChatModel(baseURL, apiKey, model string) {
+	settingsMu.Lock()
+	settings.BaseURL = strings.TrimSpace(baseURL)
+	settings.APIKey = strings.TrimSpace(apiKey)
+	settings.Model = strings.TrimSpace(model)
+	settingsMu.Unlock()
+	if err := saveSettings(); err != nil {
+		fmt.Printf("[settings] 保存失败: %v\n", err)
+	}
+}
+
+// saveVisionModel 保存视觉模型设置（视觉模型对话框）
+func saveVisionModel(baseURL, apiKey, model string) {
+	settingsMu.Lock()
+	settings.VisionBaseURL = strings.TrimSpace(baseURL)
+	settings.VisionAPIKey = strings.TrimSpace(apiKey)
+	settings.VisionModel = strings.TrimSpace(model)
+	settingsMu.Unlock()
+	if err := saveSettings(); err != nil {
+		fmt.Printf("[settings] 保存失败: %v\n", err)
+	}
+}
+
+// openModelDialog 模型设置对话框：地址/Key/模型 三输入 + 取消/默认/保存
+// defBase/defKey/defModel 为"默认"按钮恢复值（空=不恢复该项）
+func openModelDialog(parent fyne.Window, title, curBase, curKey, curModel, defBase, defKey, defModel string, save func(string, string, string)) {
+	baseE := widget.NewEntry()
+	baseE.SetText(curBase)
+	keyE := widget.NewPasswordEntry()
+	keyE.SetText(curKey)
+	modelE := widget.NewEntry()
+	modelE.SetText(curModel)
+
+	var d *dialog.CustomDialog
+	cancelBtn := widget.NewButton("取消", func() {
+		if d != nil {
+			d.Hide()
+		}
+	})
+	defBtn := widget.NewButton("默认", func() {
+		if defBase != "" {
+			baseE.SetText(defBase)
+		}
+		if defKey != "" {
+			keyE.SetText(defKey)
+		}
+		if defModel != "" {
+			modelE.SetText(defModel)
+		}
+	})
+	saveBtn := widget.NewButton("保存", func() {
+		save(baseE.Text, keyE.Text, modelE.Text)
+		if d != nil {
+			d.Hide()
+		}
+	})
+	content := container.NewVBox(
+		widget.NewLabel("API 地址"), baseE,
+		widget.NewLabel("API Key"), keyE,
+		widget.NewLabel("模型"), modelE,
+		container.NewHBox(cancelBtn, defBtn, saveBtn),
+	)
+	d = dialog.NewCustom(title, "", content, parent)
+	d.Resize(fyne.NewSize(460, 320))
+	d.Show()
+}
+
 // ---------- 设置窗口 ----------
 // setSettingString 按字段名更新设置并保存（提示词对话框用）
 func setSettingString(field, val string) {
@@ -590,12 +658,16 @@ func openSettingsDialog(parent fyne.Window) {
 	s := settings
 	settingsMu.RUnlock()
 
-	base := widget.NewEntry()
-	base.SetText(s.BaseURL)
-	key := widget.NewPasswordEntry()
-	key.SetText(s.APIKey)
-	model := widget.NewEntry()
-	model.SetText(s.Model)
+	// 2 个模型设置按钮（各自弹对话框：取消/默认/保存）
+	modelBtns := container.NewHBox(
+		widget.NewButton("💬 对话模型", func() {
+			openModelDialog(parent, "💬 对话模型", s.BaseURL, s.APIKey, s.Model, "", "", "", saveChatModel)
+		}),
+		widget.NewButton("👁️ 视觉模型", func() {
+			openModelDialog(parent, "👁️ 视觉模型", s.VisionBaseURL, s.VisionAPIKey, s.VisionModel, s.BaseURL, s.APIKey, "deepseek-v4-flash-vision-exp", saveVisionModel)
+		}),
+	)
+
 	sttModel := widget.NewSelectEntry([]string{"tiny", "base", "small", "medium", "large-v3"})
 	sttModel.SetText(s.STTModel)
 	helpInt := widget.NewEntry()
@@ -616,9 +688,7 @@ func openSettingsDialog(parent fyne.Window) {
 
 	form := dialog.NewForm("⚙️ 设置", "保存", "取消",
 		[]*widget.FormItem{
-			widget.NewFormItem("API 地址", base),
-			widget.NewFormItem("API Key", key),
-			widget.NewFormItem("模型", model),
+			widget.NewFormItem("模型设置", modelBtns),
 			widget.NewFormItem("语音识别模型", sttModel),
 			widget.NewFormItem("帮助观察间隔(秒)", helpInt),
 			widget.NewFormItem("提示词设置", promptBtns),
@@ -632,9 +702,6 @@ func openSettingsDialog(parent fyne.Window) {
 				iv = helperDefaultInt
 			}
 			settingsMu.Lock()
-			settings.BaseURL = strings.TrimSpace(base.Text)
-			settings.APIKey = strings.TrimSpace(key.Text)
-			settings.Model = strings.TrimSpace(model.Text)
 			settings.STTModel = sttModel.Text
 			settings.HelpInterval = iv
 			settingsMu.Unlock()

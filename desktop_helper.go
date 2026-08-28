@@ -182,12 +182,25 @@ func parseScreenJSON(reply string) (string, bool, string, string) {
 	return r.Activity, r.NeedHelp, r.HelpText, r.Mood
 }
 
-// visionAnalyze 调用 deepseek 视觉模型分析图片（OpenAI 兼容，图片 base64 内联）
+// visionAnalyze 调用视觉模型分析图片（OpenAI 兼容，图片 base64 内联）
+// 视觉模型可独立设置（设置对话框"视觉模型"）；未设置时回退对话模型配置
 func visionAnalyze(imgPath, prompt string) (string, error) {
 	settingsMu.RLock()
-	base := settings.BaseURL
-	key := settings.APIKey
+	base := settings.VisionBaseURL
+	key := settings.VisionAPIKey
+	model := settings.VisionModel
+	chatBase := settings.BaseURL
+	chatKey := settings.APIKey
 	settingsMu.RUnlock()
+	if base == "" {
+		base = chatBase
+	}
+	if key == "" {
+		key = chatKey
+	}
+	if model == "" {
+		model = "deepseek-v4-flash-vision-exp"
+	}
 	if base == "" || key == "" {
 		return "", fmt.Errorf("api_not_configured")
 	}
@@ -197,7 +210,7 @@ func visionAnalyze(imgPath, prompt string) (string, error) {
 	}
 	b64 := base64.StdEncoding.EncodeToString(data)
 	payload := map[string]any{
-		"model": "deepseek-v4-flash-vision-exp",
+		"model": model,
 		"messages": []map[string]any{
 			{
 				"role": "user",

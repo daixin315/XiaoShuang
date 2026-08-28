@@ -564,9 +564,8 @@ func saveVisionModel(baseURL, apiKey, model string) {
 	}
 }
 
-// openModelDialog 模型设置对话框：地址/Key/模型 三输入 + 取消/默认/保存
-// defBase/defKey/defModel 为"默认"按钮恢复值（空=不恢复该项）
-func openModelDialog(parent fyne.Window, title, curBase, curKey, curModel, defBase, defKey, defModel string, save func(string, string, string)) {
+// openModelDialog 模型设置对话框：地址/Key/模型 三输入 + 取消/保存（模型配置无内置默认，用户自填）
+func openModelDialog(parent fyne.Window, title, curBase, curKey, curModel string, save func(string, string, string)) {
 	baseE := widget.NewEntry()
 	baseE.SetText(curBase)
 	keyE := widget.NewPasswordEntry()
@@ -580,17 +579,6 @@ func openModelDialog(parent fyne.Window, title, curBase, curKey, curModel, defBa
 			d.Hide()
 		}
 	})
-	defBtn := widget.NewButton("默认", func() {
-		if defBase != "" {
-			baseE.SetText(defBase)
-		}
-		if defKey != "" {
-			keyE.SetText(defKey)
-		}
-		if defModel != "" {
-			modelE.SetText(defModel)
-		}
-	})
 	saveBtn := widget.NewButton("保存", func() {
 		save(baseE.Text, keyE.Text, modelE.Text)
 		if d != nil {
@@ -601,10 +589,10 @@ func openModelDialog(parent fyne.Window, title, curBase, curKey, curModel, defBa
 		widget.NewLabel("API 地址"), baseE,
 		widget.NewLabel("API Key"), keyE,
 		widget.NewLabel("模型"), modelE,
-		container.NewHBox(cancelBtn, defBtn, saveBtn),
+		container.NewHBox(cancelBtn, saveBtn),
 	)
 	d = dialog.NewCustom(title, "", content, parent)
-	d.Resize(fyne.NewSize(460, 320))
+	d.Resize(fyne.NewSize(460, 300))
 	d.Show()
 }
 
@@ -658,13 +646,13 @@ func openSettingsDialog(parent fyne.Window) {
 	s := settings
 	settingsMu.RUnlock()
 
-	// 2 个模型设置按钮（各自弹对话框：取消/默认/保存）
+	// 2 个模型设置按钮（各自弹对话框：取消/保存；模型配置用户自填）
 	modelBtns := container.NewHBox(
 		widget.NewButton("💬 对话模型", func() {
-			openModelDialog(parent, "💬 对话模型", s.BaseURL, s.APIKey, s.Model, "", "", "", saveChatModel)
+			openModelDialog(parent, "💬 对话模型", s.BaseURL, s.APIKey, s.Model, saveChatModel)
 		}),
 		widget.NewButton("👁️ 视觉模型", func() {
-			openModelDialog(parent, "👁️ 视觉模型", s.VisionBaseURL, s.VisionAPIKey, s.VisionModel, s.BaseURL, s.APIKey, "deepseek-v4-flash-vision-exp", saveVisionModel)
+			openModelDialog(parent, "👁️ 视觉模型", s.VisionBaseURL, s.VisionAPIKey, s.VisionModel, saveVisionModel)
 		}),
 	)
 

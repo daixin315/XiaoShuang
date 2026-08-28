@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -120,28 +119,6 @@ func chatWithAIEx(history []ChatMessage, withSystem, withMem bool) (string, erro
 		return "", fmt.Errorf("API 无回复")
 	}
 	return strings.TrimSpace(out.Choices[0].Message.Content), nil
-}
-
-// sttLocal 本地 whisper 识别（返回文字）
-func sttLocal(audioPath string) (string, error) {
-	settingsMu.RLock()
-	s := settings
-	settingsMu.RUnlock()
-	cmd := strings.Fields(s.STTCmd)
-	if len(cmd) == 0 {
-		return "", fmt.Errorf("未配置 STT 命令")
-	}
-	// 相对路径 scripts/whisper_stt.py → 绝对路径（systemd 启动时 cwd 不是项目目录）
-	script := cmd[1]
-	if strings.HasPrefix(script, "scripts/") {
-		script = filepath.Join(exeDirOf(), script)
-	}
-	args := append([]string{script}, audioPath, s.STTModel)
-	out, err := runCmd(cmd[0], args...)
-	if err != nil {
-		return "", fmt.Errorf("STT 失败: %v", err)
-	}
-	return strings.TrimSpace(out), nil
 }
 
 // ttsEdge Edge TTS 合成（输出 mp3 路径）

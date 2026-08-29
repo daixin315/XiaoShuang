@@ -228,12 +228,16 @@ func runMainWindow(exeDir string) {
 
 	// "/" 命令菜单：输入 / 弹出表情+动作选择，点选/回车执行
 	// canvas/anchor 参数化：视频窗口按钮 → 视频窗口 canvas；对话输入 → 对话窗口 canvas
-	// 用自定义滚动 PopUp 替代 fyne 原生菜单（原生子菜单弹出高度受窗口限制，17+10 项只显示 8 个）
+	// 自定义滚动 PopUp：分类展示（表情/动作）+ 高度动态适配窗口
 	var cmdMenu *widget.PopUp
 	var cmdScroll *container.Scroll
-	buildCmdMenu := func(c fyne.Canvas) {
+	buildCmdMenu := func(c fyne.Canvas, availH float32) {
 		items := []fyne.CanvasObject{}
-		// 表情
+		// 表情分组标题
+		exprTitle := canvas.NewText("😊 表情", color.NRGBA{R: 255, G: 220, B: 120, A: 255})
+		exprTitle.TextSize = 12
+		exprTitle.TextStyle = fyne.TextStyle{Bold: true}
+		items = append(items, exprTitle)
 		for _, n := range exprNames {
 			n := n
 			items = append(items, widget.NewButton("😊 "+n, func() {
@@ -244,7 +248,11 @@ func runMainWindow(exeDir string) {
 				playExpr(n, player)
 			}))
 		}
-		// 动作
+		// 动作分组标题
+		actTitle := canvas.NewText("🎬 动作", color.NRGBA{R: 120, G: 200, B: 255, A: 255})
+		actTitle.TextSize = 12
+		actTitle.TextStyle = fyne.TextStyle{Bold: true}
+		items = append(items, actTitle)
 		for _, n := range actionNames {
 			n := n
 			items = append(items, widget.NewButton("🎬 "+n, func() {
@@ -256,7 +264,7 @@ func runMainWindow(exeDir string) {
 			}))
 		}
 		cmdScroll = container.NewVScroll(container.NewVBox(items...))
-		cmdScroll.SetMinSize(fyne.NewSize(220, 320))
+		cmdScroll.SetMinSize(fyne.NewSize(240, availH))
 		cmdMenu = widget.NewPopUp(cmdScroll, c)
 		testCmdMenu = cmdMenu
 	}
@@ -269,9 +277,18 @@ func runMainWindow(exeDir string) {
 		if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
 			input.SetText("")
 		}
-		buildCmdMenu(c)
-		// 显示在触发按钮/输入框上方
+		// 高度动态：anchor 上方可用空间（窗口高 - anchor 位置 - 边距），上限 360
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
+		size := c.Size()
+		availH := size.Height - pos.Y - 40
+		if availH > 360 {
+			availH = 360
+		}
+		if availH < 120 {
+			availH = 120
+		}
+		buildCmdMenu(c, availH)
+		// 显示在触发按钮/输入框上方
 		cmdMenu.ShowAtPosition(pos.Add(fyne.NewPos(0, -30)))
 	}
 	input.OnChanged = func(text string) {

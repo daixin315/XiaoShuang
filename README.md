@@ -26,6 +26,15 @@
 
 ## 🚀 快速开始
 
+**直接下载**（免编译，素材已内置，解压即用）：
+
+| 平台 | 下载 |
+|------|------|
+| Windows | [XiaoShuang_Windows.zip](https://github.com/daixin315/XiaoShuang/releases/latest/download/XiaoShuang_Windows.zip)（双击 XiaoShuang.exe）|
+| Linux | [XiaoShuang_Linux.tar.gz](https://github.com/daixin315/XiaoShuang/releases/latest/download/XiaoShuang_Linux.tar.gz)（`./XiaoShuang`）|
+
+**或从源码编译**：
+
 ```bash
 # 1. 克隆仓库（素材包另见 Releases）
 git clone https://github.com/daixin315/XiaoShuang.git

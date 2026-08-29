@@ -161,6 +161,7 @@ func runMainWindow(exeDir string) {
 		a = app.NewWithID("fish.desktop.avatar")
 	}
 	w := a.NewWindow("小双 🐟")
+	a.Settings().SetTheme(theme.DarkTheme()) // 强制暗色主题：白字+深色控件统一，避免浅色主题下黑字配深色气泡看不清
 	// 高度贴合视频(270) + 底部按钮(≈40)，无上下留白
 	w.Resize(fyne.NewSize(480, 310))
 	chatWin := a.NewWindow("💬 小双对话") // 对话窗口（独立，双窗口模式）
@@ -194,10 +195,11 @@ func runMainWindow(exeDir string) {
 			}
 			// 半透明气泡
 			bg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 30, A: 200})
-			// 消息文本用 Label：自动换行 + 高度随行数增长（Entry 高度固定+内部滚动，长文显示不全）
-			msgLabel := widget.NewLabel(t)
-			msgLabel.Wrapping = fyne.TextWrapBreak
-			// 复制按钮（Label 不可选中复制，用按钮补偿）
+			// 消息文本用 RichText：自动换行 + 高度随内容（颜色跟随强制暗色主题=白字）
+			seg := &widget.TextSegment{Text: t}
+			rt := widget.NewRichText(seg)
+			rt.Wrapping = fyne.TextWrapBreak
+			// 复制按钮（RichText 不可选中复制，用按钮补偿）
 			copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 				w.Clipboard().SetContent(t)
 			})
@@ -208,7 +210,7 @@ func runMainWindow(exeDir string) {
 			title.TextStyle = fyne.TextStyle{Bold: true}
 			content := container.NewVBox(
 				container.NewHBox(title, copyBtn),
-				msgLabel,
+				rt,
 			)
 			bubble := container.NewStack(bg, container.NewPadded(content))
 			bubbleBox.Add(bubble)

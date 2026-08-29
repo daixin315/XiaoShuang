@@ -70,7 +70,7 @@ var globalAddMsg func(role, text string)
 // 测试句柄（fyne test 驱动 UI 用；生产无影响）
 var (
 	testInput   *widget.Entry
-	testCmdMenu *widget.PopUpMenu
+	testCmdMenu *widget.PopUp
 )
 
 // ChatLog 对话记录（内存）
@@ -228,43 +228,48 @@ func runMainWindow(exeDir string) {
 
 	// "/" 命令菜单：输入 / 弹出表情+动作选择，点选/回车执行
 	// canvas/anchor 参数化：视频窗口按钮 → 视频窗口 canvas；对话输入 → 对话窗口 canvas
-	var cmdMenu *widget.PopUpMenu
+	// 用自定义滚动 PopUp 替代 fyne 原生菜单（原生子菜单弹出高度受窗口限制，17+10 项只显示 8 个）
+	var cmdMenu *widget.PopUp
+	var cmdScroll *container.Scroll
+	buildCmdMenu := func(c fyne.Canvas) {
+		items := []fyne.CanvasObject{}
+		// 表情
+		for _, n := range exprNames {
+			n := n
+			items = append(items, widget.NewButton("😊 "+n, func() {
+				cmdMenu.Hide()
+				if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
+					input.SetText("")
+				}
+				playExpr(n, player)
+			}))
+		}
+		// 动作
+		for _, n := range actionNames {
+			n := n
+			items = append(items, widget.NewButton("🎬 "+n, func() {
+				cmdMenu.Hide()
+				if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
+					input.SetText("")
+				}
+				playAction(n, player)
+			}))
+		}
+		cmdScroll = container.NewVScroll(container.NewVBox(items...))
+		cmdScroll.SetMinSize(fyne.NewSize(220, 320))
+		cmdMenu = widget.NewPopUp(cmdScroll, c)
+		testCmdMenu = cmdMenu
+	}
 	showCmdMenu := func(c fyne.Canvas, anchor fyne.CanvasObject) {
 		fmt.Println("[menu] showCmdMenu 调用")
 		if cmdMenu != nil {
 			cmdMenu.Hide()
 		}
-		exprItems := []*fyne.MenuItem{}
-		for _, n := range exprNames {
-			n := n
-			exprItems = append(exprItems, fyne.NewMenuItem("😊 "+n, func() {
-				input.SetText("") // 菜单命令不进入聊天
-				playExpr(n, player)
-			}))
+		// 弹出即清空 "/" 触发词（PopUp 无 OnDismiss，避免点外部关闭后残留）
+		if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
+			input.SetText("")
 		}
-		actItems := []*fyne.MenuItem{}
-		for _, n := range actionNames {
-			n := n
-			actItems = append(actItems, fyne.NewMenuItem("🎬 "+n, func() {
-				input.SetText("") // 菜单命令不进入聊天
-				playAction(n, player)
-			}))
-		}
-		exprItem := fyne.NewMenuItem("😊 表情", nil)
-		exprItem.ChildMenu = fyne.NewMenu("表情", exprItems...)
-		actItem := fyne.NewMenuItem("🎬 动作", nil)
-		actItem.ChildMenu = fyne.NewMenu("动作", actItems...)
-		cmdMenu = widget.NewPopUpMenu(fyne.NewMenu("", exprItem, actItem), c)
-		testCmdMenu = cmdMenu
-		// 注意：NewPopUpMenu 默认 OnDismiss = p.Hide()，这里覆盖时必须补回 Hide，
-		// 否则点击外部/点选菜单项后菜单不会消失（fyne 只调用这一处 OnDismiss）
-		cmdMenu.OnDismiss = func() {
-			cmdMenu.Hide()
-			// 关闭时清掉以 / 开头的输入（菜单命令不进入聊天）
-			if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
-				input.SetText("")
-			}
-		}
+		buildCmdMenu(c)
 		// 显示在触发按钮/输入框上方
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
 		cmdMenu.ShowAtPosition(pos.Add(fyne.NewPos(0, -30)))

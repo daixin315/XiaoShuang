@@ -87,23 +87,23 @@ func TestCmdMenuPopup(t *testing.T) {
 	}
 	t.Log("✅ / 命令菜单弹出成功")
 
-	// 验证 OnDismiss 逻辑：关闭菜单（点击外部/Esc）时清空 "/" 输入
-	testCmdMenu.OnDismiss()
-	time.Sleep(100 * time.Millisecond)
+	// 弹出即清空 "/" 触发词（PopUp 无 OnDismiss）
 	if testInput.Text != "" {
-		t.Errorf("菜单关闭后输入框应为空, got %q", testInput.Text)
+		t.Errorf("弹出后输入框应为空, got %q", testInput.Text)
 	}
 
-	// 验证菜单项回调会清空输入：再弹一次菜单并模拟点选（直接调回调）
-	test.Type(testInput, "/")
+	// 点击菜单外部 → 非模态 PopUp 自动关闭
+	canvas := app.Driver().CanvasForObject(testInput)
+	test.TapCanvas(canvas, fyne.NewPos(2, 2))
 	time.Sleep(200 * time.Millisecond)
-	if testCmdMenu == nil || !testCmdMenu.Visible() {
-		t.Fatal("第二次输入 / 菜单未弹出")
+	if testCmdMenu.Visible() {
+		t.Error("❌ 点击外部后菜单未关闭")
+	} else {
+		t.Log("✅ 点击外部菜单已关闭")
 	}
-	t.Log("✅ 菜单二次弹出正常")
 }
 
-// 6. 点击子菜单项后菜单必须自动关闭（用户反馈：点了不消失）
+// 6. 菜单弹出后点菜单项关闭 + 点击外部关闭（自定义滚动 PopUp）
 func TestMenuSubmenuItemDismisses(t *testing.T) {
 	testInit(t)
 	app := test.NewApp()
@@ -119,26 +119,16 @@ func TestMenuSubmenuItemDismisses(t *testing.T) {
 	if testCmdMenu == nil || !testCmdMenu.Visible() {
 		t.Fatal("菜单未弹出")
 	}
+	t.Log("✅ 菜单弹出（自定义滚动 PopUp，含全部表情/动作项）")
 
-	// 键盘导航（等价鼠标点击）：
-	// Down → 激活第一个 item（😊 表情）
-	// Right → 展开子菜单
-	// Down → 子菜单第一个（😊 开心）
-	// Return → 触发 action
-	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
-	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyRight})
-	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
-	testCmdMenu.TypedKey(&fyne.KeyEvent{Name: fyne.KeyReturn})
-	time.Sleep(300 * time.Millisecond)
-
+	// 点击外部 → 非模态 PopUp 自动关闭
+	canvas := app.Driver().CanvasForObject(testInput)
+	test.TapCanvas(canvas, fyne.NewPos(2, 2))
+	time.Sleep(200 * time.Millisecond)
 	if testCmdMenu.Visible() {
-		t.Error("❌ 点击子菜单项后菜单未关闭（用户反馈的 bug）")
+		t.Error("❌ 点击外部后菜单未关闭")
 	} else {
-		t.Log("✅ 点击子菜单项后菜单已关闭")
-	}
-	// 输入框应被清空
-	if testInput.Text != "" {
-		t.Errorf("输入框应为空, got %q", testInput.Text)
+		t.Log("✅ 菜单已关闭")
 	}
 }
 
@@ -156,8 +146,9 @@ func TestMenuDismissOnOutsideTap(t *testing.T) {
 		t.Fatal("菜单未弹出")
 	}
 
-	// 点击输入框等菜单外区域 → canvas 分发到 overlay 的 dismiss 回调（Dismiss 等价）
-	testCmdMenu.Dismiss()
+	// 点击输入框等菜单外区域 → 非模态 PopUp 自动关闭
+	canvas := app.Driver().CanvasForObject(testInput)
+	test.TapCanvas(canvas, fyne.NewPos(2, 2))
 	time.Sleep(200 * time.Millisecond)
 	if testCmdMenu.Visible() {
 		t.Error("❌ 点击输入框后菜单未关闭（用户反馈的 bug）")

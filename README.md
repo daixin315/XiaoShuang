@@ -59,6 +59,19 @@ assets/
 
 收录规范：主图 1280x720 PNG；表情/动作 mp4（H.264，720p，动作 2-4 秒循环/单次均可）。
 
+## 🤖 与 Hermes（AI 助手）联动
+
+小双可以嵌入 [Hermes Agent](https://hermes-agent.nousresearch.com) 工作流，通过 QQ / 本地接口联动：
+
+- **QQ 遥控**：QQ 发 `小双 xxx` → Hermes 转达给小双聊天/表演动作
+- **HTTP 接口**（127.0.0.1:8721）：
+  - `/chat` 转达消息（与窗口输入完全一致，走同一对话链路和记忆系统）
+  - `/action` 点播表情/动作
+  - `/mood` 设置情绪
+  - `/exec` 执行命令（黑名单 + AI 安全审查 + sudo 严格标准三重防护）
+  - `/status` 状态查询
+- **本地大模型**：对话模型可填本地 llama.cpp/FreeToken（OpenAI 兼容），如 `http://127.0.0.1:8081/v1`，免 API 费用
+
 ## 🤝 贡献代码
 
 欢迎 Pull Request！请遵守：

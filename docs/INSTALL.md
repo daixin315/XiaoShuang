@@ -33,7 +33,7 @@ pip install -r requirements.txt
 ```ini
 # ~/.config/systemd/user/fish-desktop.service
 [Unit]
-Description=XiaoShuang
+Description=XiaoShuang 桌面宠物
 After=graphical-session.target
 
 [Service]

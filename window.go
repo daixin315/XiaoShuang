@@ -158,7 +158,7 @@ func runMainWindow(exeDir string) {
 	if useTestApp {
 		a = fyne.CurrentApp() // 测试环境复用 test app（window_test.go 注入）
 	} else {
-		a = app.NewWithID("fish.desktop.avatar")
+		a = app.NewWithID("xiaoshuang.desktop.avatar")
 	}
 	w := a.NewWindow("小双 🐟")
 	a.Settings().SetTheme(theme.DarkTheme()) // 强制暗色主题：白字+深色控件统一，避免浅色主题下黑字配深色气泡看不清

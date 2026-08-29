@@ -227,41 +227,57 @@ func runMainWindow(exeDir string) {
 	input.SetPlaceHolder("输入 / 打开表情·动作菜单，或直接聊天…")
 
 	// "/" 命令菜单：输入 / 弹出表情+动作选择，点选/回车执行
-	// canvas/anchor 参数化：视频窗口按钮 → 视频窗口 canvas；对话输入 → 对话窗口 canvas
-	// 自定义滚动 PopUp：分类展示（表情/动作）+ 高度动态适配窗口
+	// 两级导航菜单：😊表情 / 🎬动作 → 点开对应分组列表（滚动全部可见，带←返回）
 	var cmdMenu *widget.PopUp
 	var cmdScroll *container.Scroll
-	buildCmdMenu := func(c fyne.Canvas, availH float32) {
+	var cmdLastPos fyne.Position
+	var buildCmdMenu func(c fyne.Canvas, level int, availH float32)
+	buildCmdMenu = func(c fyne.Canvas, level int, availH float32) {
 		items := []fyne.CanvasObject{}
-		// 表情分组标题
-		exprTitle := canvas.NewText("😊 表情", color.NRGBA{R: 255, G: 220, B: 120, A: 255})
-		exprTitle.TextSize = 12
-		exprTitle.TextStyle = fyne.TextStyle{Bold: true}
-		items = append(items, exprTitle)
-		for _, n := range exprNames {
-			n := n
-			items = append(items, widget.NewButton("😊 "+n, func() {
-				cmdMenu.Hide()
-				if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
-					input.SetText("")
-				}
-				playExpr(n, player)
-			}))
+		openLevel := func(l int) {
+			cmdMenu.Hide()
+			buildCmdMenu(c, l, availH)
+			cmdMenu.ShowAtPosition(cmdLastPos)
 		}
-		// 动作分组标题
-		actTitle := canvas.NewText("🎬 动作", color.NRGBA{R: 120, G: 200, B: 255, A: 255})
-		actTitle.TextSize = 12
-		actTitle.TextStyle = fyne.TextStyle{Bold: true}
-		items = append(items, actTitle)
-		for _, n := range actionNames {
-			n := n
-			items = append(items, widget.NewButton("🎬 "+n, func() {
-				cmdMenu.Hide()
-				if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
-					input.SetText("")
+		if level == 0 {
+			// 主菜单：两个分组入口
+			items = append(items, widget.NewButton("😊 表情", func() { openLevel(1) }))
+			items = append(items, widget.NewButton("🎬 动作", func() { openLevel(2) }))
+			items = append(items, widget.NewButton("✖ 关闭", func() { cmdMenu.Hide() }))
+		} else {
+			// 分组列表：← 返回 + 标题 + 全部项
+			items = append(items, widget.NewButton("← 返回", func() { openLevel(0) }))
+			if level == 1 {
+				title := canvas.NewText("😊 表情", color.NRGBA{R: 255, G: 220, B: 120, A: 255})
+				title.TextSize = 12
+				title.TextStyle = fyne.TextStyle{Bold: true}
+				items = append(items, title)
+				for _, n := range exprNames {
+					n := n
+					items = append(items, widget.NewButton("😊 "+n, func() {
+						cmdMenu.Hide()
+						if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
+							input.SetText("")
+						}
+						playExpr(n, player)
+					}))
 				}
-				playAction(n, player)
-			}))
+			} else {
+				title := canvas.NewText("🎬 动作", color.NRGBA{R: 120, G: 200, B: 255, A: 255})
+				title.TextSize = 12
+				title.TextStyle = fyne.TextStyle{Bold: true}
+				items = append(items, title)
+				for _, n := range actionNames {
+					n := n
+					items = append(items, widget.NewButton("🎬 "+n, func() {
+						cmdMenu.Hide()
+						if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
+							input.SetText("")
+						}
+						playAction(n, player)
+					}))
+				}
+			}
 		}
 		cmdScroll = container.NewVScroll(container.NewVBox(items...))
 		cmdScroll.SetMinSize(fyne.NewSize(240, availH))
@@ -287,9 +303,9 @@ func runMainWindow(exeDir string) {
 		if availH < 120 {
 			availH = 120
 		}
-		buildCmdMenu(c, availH)
-		// 显示在触发按钮/输入框上方
-		cmdMenu.ShowAtPosition(pos.Add(fyne.NewPos(0, -30)))
+		buildCmdMenu(c, 0, availH)
+		cmdLastPos = pos.Add(fyne.NewPos(0, -30))
+		cmdMenu.ShowAtPosition(cmdLastPos)
 	}
 	input.OnChanged = func(text string) {
 		if strings.TrimSpace(text) == "/" {

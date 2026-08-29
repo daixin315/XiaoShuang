@@ -1,7 +1,11 @@
 # 编译产物
 /fish_desktop
 /fish_desktop.exe
+/fish_desktop_new
 *.exe
+
+# 素材（开源仓库不含素材，素材包单独发布）
+assets/
 
 # 本地配置（含密钥）
 settings.json
@@ -10,6 +14,9 @@ memory.json
 memory/
 chat_history.txt
 sudo_pass.txt
+
+# 素材备份/临时
+/tmp/
 
 # Python
 __pycache__/

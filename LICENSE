@@ -1,21 +1,47 @@
-MIT License
+小双桌面宠物（XiaoShuang）授权协议
+============================================
+
+版本：1.0（2026-08-29）
+
+本软件（含源码、文档、脚本）与素材（形象图片、表情/动作动画，下称"素材"）
+适用不同的授权条款，分别说明如下。
+
+一、代码部分（源码、文档、脚本、构建配置）
+--------------------------------------------
+
+1. 个人使用：免费。个人学习、研究、自用均可，无需授权。
+
+2. 开放贡献：欢迎通过 Pull Request 等方式贡献代码。提交贡献即视为
+   同意本协议，并授权项目维护者以本协议条款收录、发布你的贡献。
+
+3. 禁止商用：任何形式的商业用途（包括但不限于：销售、收费服务、
+   企业内商用、广告、以营利为目的的整合分发）均须事先获得作者书面授权。
+   未经授权擅自商用构成侵权。
+
+4. 允许修改与再分发（非商用）：可以修改、复制、再分发（非商业目的），
+   但必须保留本授权协议全文及版权声明，且不得以任何方式暗示作者
+   认可你的修改版本。
+
+二、素材部分（assets/ 目录下的形象、表情、动作、主图等）
+----------------------------------------------------------
+
+素材采用 Creative Commons Attribution-NonCommercial-NoDerivatives
+4.0 International（CC BY-NC-ND 4.0）许可：
+
+- 署名（BY）：使用时须标注作者/来源。
+- 非商业（NC）：仅限个人、非商业用途免费使用；商业用途须获得授权。
+- 禁止演绎（ND）：不得修改、改编素材后对外分发。
+
+完整许可文本见 https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode
+
+三、其他
+--------
+
+1. 素材投稿：用户投稿的形象素材（详见 README 贡献指南），投稿即视为
+   同意以 CC BY-NC-ND 4.0 授权项目收录、分发，并标注投稿者署名。
+
+2. 本软件按"现状"提供，作者不对使用本软件产生的任何后果承担责任。
+
+3. 商业授权请联系作者。
 
 Copyright (c) 2026 fish-desktop-avatar contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.

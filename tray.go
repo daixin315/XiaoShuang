@@ -45,8 +45,11 @@ func trayReady() {
 			case <-mShow.ClickedCh:
 				globalWinVisible = true
 				if trayWindow != nil {
-					trayWindow.Show()
-					trayWindow.RequestFocus()
+					// fyneDo 确保 UI 线程执行（视频窗口被 Hide 后直接调用可能不生效）
+					fyneDo(func() {
+						trayWindow.Show()
+						trayWindow.RequestFocus()
+					})
 				}
 			case <-mQuit.ClickedCh:
 				trayQuit = true

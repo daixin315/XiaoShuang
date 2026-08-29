@@ -240,13 +240,11 @@ func runMainWindow(exeDir string) {
 			cmdMenu.ShowAtPosition(cmdLastPos)
 		}
 		if level == 0 {
-			// 主菜单：两个分组入口
+			// 主菜单：两个分组入口（点外部即可关闭，无需关闭按钮）
 			items = append(items, widget.NewButton("😊 表情", func() { openLevel(1) }))
 			items = append(items, widget.NewButton("🎬 动作", func() { openLevel(2) }))
-			items = append(items, widget.NewButton("✖ 关闭", func() { cmdMenu.Hide() }))
 		} else {
-			// 分组列表：← 返回 + 标题 + 全部项
-			items = append(items, widget.NewButton("← 返回", func() { openLevel(0) }))
+			// 分组列表：标题 + 全部项（点外部/点项后即关闭，无需返回按钮）
 			if level == 1 {
 				title := canvas.NewText("😊 表情", color.NRGBA{R: 255, G: 220, B: 120, A: 255})
 				title.TextSize = 12

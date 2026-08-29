@@ -17,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -193,18 +194,21 @@ func runMainWindow(exeDir string) {
 			}
 			// 半透明气泡
 			bg := canvas.NewRectangle(color.NRGBA{R: 20, G: 20, B: 30, A: 200})
-			// 消息文本用 Entry：支持鼠标拖选部分内容 + Ctrl+C/右键复制 + 自动换行
-			msgEntry := widget.NewEntry()
-			msgEntry.MultiLine = true
-			msgEntry.SetText(t)
-			msgEntry.Wrapping = fyne.TextWrapBreak
+			// 消息文本用 Label：自动换行 + 高度随行数增长（Entry 高度固定+内部滚动，长文显示不全）
+			msgLabel := widget.NewLabel(t)
+			msgLabel.Wrapping = fyne.TextWrapBreak
+			// 复制按钮（Label 不可选中复制，用按钮补偿）
+			copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+				w.Clipboard().SetContent(t)
+			})
+			copyBtn.Importance = widget.LowImportance
 			// 标题用小字号（默认字高一半左右，紧凑）
 			title := canvas.NewText(prefix, color.NRGBA{R: 255, G: 255, B: 255, A: 220})
 			title.TextSize = 10
 			title.TextStyle = fyne.TextStyle{Bold: true}
 			content := container.NewVBox(
-				title,
-				msgEntry,
+				container.NewHBox(title, copyBtn),
+				msgLabel,
 			)
 			bubble := container.NewStack(bg, container.NewPadded(content))
 			bubbleBox.Add(bubble)

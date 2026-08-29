@@ -293,17 +293,18 @@ func runMainWindow(exeDir string) {
 		if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
 			input.SetText("")
 		}
-		// 高度动态：菜单显示在 anchor 上方，可用高度 = anchor 到窗口顶部的距离（上限 360）
-		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
-		availH := pos.Y - 40
-		if availH > 360 {
-			availH = 360
+		// 高度 = 窗口高度 - 上下边距（菜单居中显示，完整可见，不依赖按钮位置）
+		size := c.Size()
+		availH := size.Height - 40
+		if availH > 400 {
+			availH = 400
 		}
-		if availH < 120 {
-			availH = 120
+		if availH < 150 {
+			availH = 150
 		}
 		buildCmdMenu(c, 0, availH)
-		cmdLastPos = pos.Add(fyne.NewPos(0, -30))
+		// 位置：窗口内居中（宽 250 的菜单）
+		cmdLastPos = fyne.NewPos((size.Width-250)/2, (size.Height-availH)/2)
 		cmdMenu.ShowAtPosition(cmdLastPos)
 	}
 	input.OnChanged = func(text string) {

@@ -1,95 +1,81 @@
-# 🐟 桌面鱼形象（Fish Desktop Avatar）
+# 🐟 小双桌面宠物（Fish Desktop Avatar）
 
-一个跨平台（Linux / Windows / macOS）的桌面 AI 陪伴形象：
-**AI 生成的古风少女常驻桌面右下角**，支持表情切换、动作视频、文字对话和语音聊天。
+一个跨平台（Linux / Windows / macOS）的桌面 AI 陪伴形象：**AI 生成的古风少女常驻你的桌面**，支持表情切换、动作视频、文字对话、记忆系统、桌面观察帮助、待办提醒。
 
-![形象](./assets/main.png)
+## ✨ 功能特性
 
-## ✨ 功能
+- **双独立窗口**：视频窗口（形象表演）+ 对话窗口（聊天），一键互切
+- **AI 对话**：接入任意 OpenAI 兼容 API（默认 DeepSeek），对话模型/视觉模型可分开配置
+- **表情与动作**：17 个表情 + 10 个动作动画（1280x720），按钮或输入 `/` 弹出菜单，AI 回复可自动选表情表演
+- **记忆系统**：六层记忆（核心/系统/重要/时间线），对话后自动总结，支持 `/记`、`/记忆`、`/忘` 命令
+- **桌面观察帮助**：`🔍 帮助` 立即分析当前屏幕给建议；`💡 实时帮助` 持续观察，需要帮助才提醒（视觉模型看图）
+- **待办提醒**：说"记一下 明天上午10点开会"，到点提醒
+- **关窗保护**：点 X 隐藏到托盘，托盘恢复（不退出）
+- **本地 HTTP 接口**（127.0.0.1:8721）：/chat 转达消息、/exec 安全执行命令、/action 点播动作、/status 状态
+- **语音播报**：回复可朗读（Edge TTS），待办/帮助提醒出声
 
-- 🖼️ **桌面形象**：古风少女常驻右下角（mpv 播放，无边框置顶）
-- 😊 **18 种表情动画**：开心/微笑/思考/忧愁/生气/伤心/眨眼…（AI 视频生成，镜头固定、自然还原）
-- 🎬 **10 个动作视频**：抱狗荡秋千/摘野果喂狗/蝴蝶围圈/河边锦鲤/凤凰落手臂/看马摸马/躺花丛/河边戏水/蝴蝶停指尖/荡秋千
-- 💬 **文字对话**：侧边栏输入文字，AI 回复（支持任意 OpenAI 兼容 API）
-- 🎤 **语音聊天**：按住说话 → 本地语音识别 → AI 回复 → 语音合成朗读
-- 😍 **表情联动**：对话时形象同步表情（思考→开心/忧愁）
-- ⚙️ **可配置**：设置面板自定义 API 接入（DeepSeek / 通义 / 豆包 / 本地 Ollama 等）
+## 🖥️ 运行环境
+
+| 平台 | 支持 | 说明 |
+|------|------|------|
+| Linux | ✅ | systemd 常驻、托盘（appindicator）、Wayland/X11 |
+| Windows | ✅ | 绿色免安装版（双击 XiaoShuang.exe）|
+| macOS | ⚠️ | 代码兼容，未完整测试 |
+
+依赖：Go 1.22+ 编译；运行需要 `ffmpeg`（播放动画）；对话需要 API Key（DeepSeek 等）。
 
 ## 🚀 快速开始
 
-### 依赖
-
-| 依赖 | 用途 | 安装 |
-|------|------|------|
-| mpv | 播放形象/音频 | `apt install mpv` / [mpv.io](https://mpv.io) |
-| Python 3.9+ | 语音识别 | [python.org](https://python.org) |
-| ffmpeg | 录音 | `apt install ffmpeg` / [ffmpeg.org](https://ffmpeg.org) |
-
-### 安装语音依赖
-
 ```bash
-pip install -r requirements.txt
-# faster-whisper 首次运行会自动下载模型（约 1.5GB）
-```
+# 1. 克隆仓库（素材包另见 Releases）
+git clone https://github.com/<你的用户名>/fish-desktop-avatar.git
+cd fish-desktop-avatar
 
-### 运行
-
-```bash
-# Linux
-./fish_desktop --video-dir ./assets
-
-# Windows（解压后）
-fish_desktop.exe
-
-# macOS
+# 2. 放入素材（见下文"素材"章节）或先跑起来看默认界面
+# 3. 编译运行
+go build -o fish_desktop .
 ./fish_desktop
 ```
 
-首次启动：
-1. 右下角出现形象 + 侧边栏窗口
-2. 点 ⚙️ 设置 → 填 API 地址 / Key / 模型（支持任何 OpenAI 兼容 API）
-3. 在输入框聊天，或按住 🎤 说话
+**配置**：首次启动点 `⚙️ 设置` → `💬 对话模型` 填写 API 地址 / Key / 模型名，保存即可聊天。
 
-### 表情控制（外部调用）
+## 🎨 素材
 
-```bash
-echo '{"emotion":"happy"}' > mood.json
-# 支持: idle/happy/smile/daze/sad/think/trance/surprised/proud/shy/sleepy/angry/excited/crying/wink/wronged/cute/scared/speechless
-```
-
-## 🔌 支持的 API 接入
-
-| 服务 | base_url | model 示例 |
-|------|---------|-----------|
-| DeepSeek | `https://api.deepseek.com/v1` | deepseek-chat |
-| 阿里百炼 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | qwen-plus |
-| 火山方舟 | `https://ark.cn-beijing.volces.com/api/v3` | doubao-seedance-2-0 |
-| 硅基流动 | `https://api.siliconflow.cn/v1` | deepseek-ai/DeepSeek-V3 |
-| 本地 Ollama | `http://localhost:11434/v1` | qwen2.5 |
-
-## 🛠️ 自定义形象
-
-见 [docs/CUSTOMIZE.md](docs/CUSTOMIZE.md) —— 用自己的 AI 生成主图、表情和动作视频。
-
-## 📁 项目结构
+素材（形象主图、表情、动作动画）**不包含在代码仓库**，请从 Releases 下载素材包，解压到项目根目录：
 
 ```
-├── mood_daemon.go    # 守护进程（形象播放+表情联动）
-├── sidebar.go        # Fyne 侧边栏（对话+语音+设置）
-├── settings.go       # 配置管理
-├── ai_client.go      # AI 对话 / STT / TTS 调用
-├── scripts/whisper_stt.py  # 本地语音识别
-├── assets/           # 主图 + 表情动画 + 动作视频
-└── docs/             # 文档
+assets/
+├── main/main.png        # 主图（1280x720）
+├── expr/*.mp4           # 表情动画（17 个）
+└── action/*.mp4         # 动作动画（10 个）
 ```
 
-## 📜 许可
+### 素材贡献指南
 
-MIT License
+欢迎投稿你自己的形象（**1280x720**）：
+1. 按上述目录结构整理（main.png + 表情/动作 mp4）
+2. 在 README 末尾的贡献者列表登记（或提 Issue 附下载链接）
+3. 投稿即视为同意以 **CC BY-NC-ND 4.0** 授权项目收录分发，并标注你的署名
 
-## 🙏 致谢
+收录规范：主图 1280x720 PNG；表情/动作 mp4（H.264，720p，动作 2-4 秒循环/单次均可）。
 
-- 形象与动画由 **Qwen-Image / Seedance 2.0 / 2.5**（火山方舟）生成
-- UI 使用 [Fyne](https://fyne.io)
-- 语音识别 [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- 语音合成 [edge-tts](https://github.com/rany2/edge-tts)
+## 🤝 贡献代码
+
+欢迎 Pull Request！请遵守：
+- 中文注释、gofmt、每个 bug 修复配回归测试（`go test ./...`）
+- 提交即视为同意本仓库 LICENSE 条款（个人免费 + 禁商用 + 开放贡献）
+
+## 📄 授权
+
+- **代码**：自定义授权（个人免费使用 + 开放贡献 + **禁止商用**，商用请联系作者授权）——详见 [LICENSE](LICENSE)
+- **素材**：CC BY-NC-ND 4.0（个人免费、非商业、禁止演绎分发）
+
+## 🔗 相关项目
+
+- 素材/形象由 AI 生成（即梦/可灵等）
+- 使用 [fyne](https://fyne.io) GUI 框架、[systray](https://github.com/getlantern/systray)、ffmpeg
+
+## 📞 联系
+
+- 作者：daixin（daixin@msn.cn）
+- 商业授权、素材投稿、问题反馈：GitHub Issue 或邮件

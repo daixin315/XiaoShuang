@@ -293,10 +293,9 @@ func runMainWindow(exeDir string) {
 		if strings.HasPrefix(strings.TrimSpace(input.Text), "/") {
 			input.SetText("")
 		}
-		// 高度动态：anchor 上方可用空间（窗口高 - anchor 位置 - 边距），上限 360
+		// 高度动态：菜单显示在 anchor 上方，可用高度 = anchor 到窗口顶部的距离（上限 360）
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(anchor)
-		size := c.Size()
-		availH := size.Height - pos.Y - 40
+		availH := pos.Y - 40
 		if availH > 360 {
 			availH = 360
 		}

@@ -663,13 +663,22 @@ func openSettingsDialog(parent fyne.Window) {
 	s := settings
 	settingsMu.RUnlock()
 
-	// 2 个模型设置按钮（各自弹对话框：取消/保存；模型配置用户自填）
+	// 2 个模型设置按钮（各自弹对话框：取消/保存；模型配置用户自填，视觉模型预填默认值）
 	modelBtns := container.NewHBox(
 		widget.NewButton("💬 对话模型", func() {
 			openModelDialog(parent, "💬 对话模型", s.BaseURL, s.APIKey, s.Model, saveChatModel)
 		}),
 		widget.NewButton("👁️ 视觉模型", func() {
-			openModelDialog(parent, "👁️ 视觉模型", s.VisionBaseURL, s.VisionAPIKey, s.VisionModel, saveVisionModel)
+			// 首次打开预填默认（地址=deepseek、模型=vision-exp），用户只需填 Key
+			vBase := s.VisionBaseURL
+			if vBase == "" {
+				vBase = "https://api.deepseek.com/v1"
+			}
+			vModel := s.VisionModel
+			if vModel == "" {
+				vModel = "deepseek-v4-flash-vision-exp"
+			}
+			openModelDialog(parent, "👁️ 视觉模型", vBase, s.VisionAPIKey, vModel, saveVisionModel)
 		}),
 	)
 

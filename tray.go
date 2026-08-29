@@ -28,10 +28,9 @@ func startTray(w fyne.Window) {
 func trayReady() {
 	systray.SetTitle("小双")
 	systray.SetTooltip("小双 🐟 桌面陪伴")
-	// 图标：用小双主图（main.png），失败则用默认
+	// 图标：用小双主图（main.png）缩放到 32x32（托盘标准尺寸，大图 Windows 不显示）
 	if img := loadImageFile(mainImgPath); img != nil {
-		// 转成 RGBA 位图给 systray
-		systray.SetIcon(imageToRGBA(img))
+		systray.SetIcon(resizeIcon(img, 32))
 	} else {
 		systray.SetIcon(iconFallback())
 	}
@@ -64,6 +63,20 @@ func trayReady() {
 // trayExit systray 退出回调
 func trayExit() {
 	fmt.Println("[tray] 托盘已退出")
+}
+
+// resizeIcon 最近邻缩放图片到指定尺寸，返回 RGBA 字节（托盘图标用，小尺寸防 Windows 不显示）
+func resizeIcon(img image.Image, size int) []byte {
+	b := img.Bounds()
+	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			sx := (x * b.Dx()) / size
+			sy := (y * b.Dy()) / size
+			dst.Set(x, y, img.At(sx, sy))
+		}
+	}
+	return dst.Pix
 }
 
 // imageToRGBA 把 image.Image 转成 RGBA 字节（systray 图标用）

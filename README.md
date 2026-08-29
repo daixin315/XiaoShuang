@@ -123,6 +123,13 @@ Body: {"cmd": "ls -la"}
 - 素材/形象由 AI 生成（即梦/可灵等）
 - 使用 [fyne](https://fyne.io) GUI 框架、[systray](https://github.com/getlantern/systray)、ffmpeg
 
+## 🚀 未来规划
+
+- **视觉操作桌面**：让小双不仅"看"桌面（当前 Help 已能分析屏幕），更能**直接操作**——通过视觉模型识别界面元素定位（按钮/输入框/图标），配合鼠标键盘模拟（ydotool/xdotool），实现"看到什么就能点什么"的完整桌面智能体
+- 多形象切换与素材市场（社区投稿形象一键安装）
+- 语音对话（本地 whisper 已具备基础，恢复完整语音交互）
+- 更丰富的情绪/表情联动（AI 情感识别驱动表演）
+
 ## 📞 联系
 
 - 作者：daixin（daixin@msn.cn）

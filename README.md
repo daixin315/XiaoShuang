@@ -28,13 +28,13 @@
 
 ```bash
 # 1. 克隆仓库（素材包另见 Releases）
-git clone https://github.com/<你的用户名>/fish-desktop-avatar.git
-cd fish-desktop-avatar
+git clone https://github.com/daixin315/XiaoShuang.git
+cd XiaoShuang
 
 # 2. 放入素材（见下文"素材"章节）或先跑起来看默认界面
 # 3. 编译运行
-go build -o fish_desktop .
-./fish_desktop
+go build -o XiaoShuang .
+./XiaoShuang
 ```
 
 **配置**：首次启动点 `⚙️ 设置` → `💬 对话模型` 填写 API 地址 / Key / 模型名，保存即可聊天。

@@ -291,10 +291,21 @@ func runMainWindow(exeDir string) {
 	// ===== 底部栏（显示小双 + 帮助 + 设置；表情/动作按钮在视频窗口）=====
 	var menuBtn *widget.Button
 	menuBtn = widget.NewButton("🎭 表情/动作", func() { showCmdMenu(w.Canvas(), menuBtn) })
-	showMascotBtn := widget.NewButton("🐟 显示小双", func() {
-		w.Show()
-		w.RequestFocus()
-	})
+	// 🐟 显示小双 ↔ ❌ 关闭小双（切换按钮：隐藏/显示视频窗口）
+	showMascotBtn := widget.NewButton("❌ 关闭小双", nil) // 视频窗口初始可见
+	wVisible := true
+	showMascotBtn.OnTapped = func() {
+		if wVisible {
+			w.Hide()
+			showMascotBtn.SetText("🐟 显示小双")
+			wVisible = false
+		} else {
+			w.Show()
+			w.RequestFocus()
+			showMascotBtn.SetText("❌ 关闭小双")
+			wVisible = true
+		}
+	}
 	setBtn := widget.NewButton("⚙️ 设置", func() { openSettingsDialog(chatWin) })
 
 	// 🔍 帮助（一次性）：点击立即分析当前桌面并给出建议，只分析一次
@@ -318,12 +329,21 @@ func runMainWindow(exeDir string) {
 
 	// ===== 根布局：视频(顶,固定) + 对话(中,固定~1-2行) + 输入/设置(底,贴底) =====
 	// Border center 会自动填满、VBox 会均分剩余空间，都不能固定对话区高度，用自定义布局
-	// ===== 双独立窗口：视频窗口（形象）+ 对话窗口 =====
-	showChatBtn := widget.NewButton("💬 显示对话", func() {
-		chatWin.Show()
-		chatWin.RequestFocus()
-	})
-	// 视频窗口：形象大画面 + 底部"🎭 表情/动作 + 💬 显示对话"（有边框可缩放，FillContain 随窗口缩放）
+	// ===== 双独立窗口：视频窗口（形象）+ 对话窗口（按钮切换显示/关闭）=====
+	showChatBtn := widget.NewButton("💬 显示对话", nil)
+	chatWinVisible := false // 对话窗口当前是否显示（初始隐藏）
+	showChatBtn.OnTapped = func() {
+		if chatWinVisible {
+			chatWin.Hide()
+			showChatBtn.SetText("💬 显示对话")
+			chatWinVisible = false
+		} else {
+			chatWin.Show()
+			chatWin.RequestFocus()
+			showChatBtn.SetText("❌ 关闭对话")
+			chatWinVisible = true
+		}
+	}
 	w.SetContent(container.NewBorder(
 		nil,
 		container.NewHBox(menuBtn, showChatBtn),

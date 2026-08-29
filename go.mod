@@ -1,4 +1,4 @@
-module fish-desktop-avatar
+module xiaoshuang
 
 go 1.25.0
 

@@ -23,6 +23,7 @@ type VideoPlayer struct {
 	stdout  io.ReadCloser
 	mu      sync.Mutex
 	stopped bool
+	playGen uint64 // 播放代号：每次 play 递增，旧 goroutine 发现代号不符立即退出（修复切换竞态）
 	onFrame func()
 	once    bool   // 单次播放模式（播完回调 onDone，不循环）
 	onDone  func() // 单次播放结束回调（goroutine 内调用，内部需自行 fyne.Do）
@@ -99,11 +100,13 @@ func (vp *VideoPlayer) play(videoPath string, fps int, once bool, onDone func())
 		fps = 2
 	}
 	vp.mu.Lock()
+	vp.playGen++ // 作废旧 goroutine（旧代号不匹配立即退出）
+	myGen := vp.playGen
 	vp.stopped = false
 	vp.once = once
 	vp.onDone = onDone
 	vp.mu.Unlock()
-	fmt.Printf("[player] 播放: %s fps=%d once=%v\n", videoPath, fps, once)
+	fmt.Printf("[player] 播放: %s fps=%d once=%v (gen=%d)\n", videoPath, fps, once, myGen)
 
 	ffArgs := append(hwaccelArgs(), "-i", videoPath,
 		"-vf", "fps="+itoa(fps)+",scale=480:270,format=rgba",
@@ -129,7 +132,7 @@ func (vp *VideoPlayer) play(videoPath string, fps int, once bool, onDone func())
 		fill := 0
 		for {
 			vp.mu.Lock()
-			if vp.stopped {
+			if vp.stopped || vp.playGen != myGen {
 				vp.mu.Unlock()
 				return
 			}
@@ -149,7 +152,11 @@ func (vp *VideoPlayer) play(videoPath string, fps int, once bool, onDone func())
 				fmt.Println("[player] StdoutPipe 失败:", err)
 				return
 			}
-			vp.cmd = cmd
+			vp.mu.Lock()
+			if vp.playGen == myGen {
+				vp.cmd = cmd // 只有当前代 goroutine 才有权设置 cmd（防旧 goroutine 覆盖）
+			}
+			vp.mu.Unlock()
 			cmd.Stderr = os.Stderr
 			cmd.Env = append(os.Environ(), hwaccelEnv()...)
 			if err := cmd.Start(); err != nil {
@@ -160,7 +167,7 @@ func (vp *VideoPlayer) play(videoPath string, fps int, once bool, onDone func())
 			buf := make([]byte, 64*1024)
 			for {
 				vp.mu.Lock()
-				if vp.stopped {
+				if vp.stopped || vp.playGen != myGen {
 					vp.mu.Unlock()
 					return
 				}
@@ -271,6 +278,7 @@ func (vp *VideoPlayer) showFrame(img image.Image) {
 func (vp *VideoPlayer) Stop() {
 	vp.mu.Lock()
 	vp.stopped = true
+	vp.playGen++ // 作废旧 goroutine
 	cmd := vp.cmd
 	vp.mu.Unlock()
 	if cmd != nil && cmd.Process != nil {

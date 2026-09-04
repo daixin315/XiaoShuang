@@ -14,6 +14,12 @@
 - **本地 HTTP 接口**（127.0.0.1:8721）：/chat 转达消息、/exec 安全执行命令、/action 点播动作、/status 状态
 - **语音播报**：回复可朗读（Edge TTS），待办/帮助提醒出声
 
+## 🤖 DeepSeek Harness 插件版
+
+喜欢小双，但更常跟 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）一起写代码？试试 **dsh-xiaoshuang**：把小双的记忆系统和形象做成 DSH 插件——右下角浮动视频形象跟随 agent 状态自动表演（思考/干活/完成），带六层记忆、语音播报、手动表情菜单。
+
+👉 [github.com/daixin315/dsh-xiaoshuang](https://github.com/daixin315/dsh-xiaoshuang)
+
 ## 🖥️ 运行环境
 
 | 平台 | 支持 | 说明 |

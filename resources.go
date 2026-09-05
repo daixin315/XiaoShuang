@@ -59,7 +59,7 @@ var actionAlias = map[string]string{
 	"hug_dog":          "抱狗荡秋千",
 }
 
-// firstExist 返回第一个存在的目录（中文优先，英文兜底——Windows 绿色版用英文文件名防乱码）
+// firstExist 返回第一个存在的目录（保留，其他地方可能用）
 func firstExist(paths ...string) string {
 	for _, p := range paths {
 		if st, err := os.Stat(p); err == nil && st.IsDir() {
@@ -70,11 +70,11 @@ func firstExist(paths ...string) string {
 }
 
 // scanResources 扫描素材目录（videoDir 下），构建索引；失败时打印警告不退出
+// 素材目录统一英文：expr(表情)/action(动作)/main(主图)，与 XiaoShuang Release 包一致
 func scanResources() {
-	// 目录双兼容：中文目录（Linux 现有）或英文目录（Windows 绿色版）
-	exprDir := firstExist(filepath.Join(videoDir, "表情"), filepath.Join(videoDir, "expr"))
-	actDir := firstExist(filepath.Join(videoDir, "动作"), filepath.Join(videoDir, "action"))
-	mainDir := firstExist(filepath.Join(videoDir, "主图"), filepath.Join(videoDir, "main"))
+	exprDir := filepath.Join(videoDir, "expr")
+	actDir := filepath.Join(videoDir, "action")
+	mainDir := filepath.Join(videoDir, "main")
 
 	mainImgPath = filepath.Join(mainDir, "main.png")
 	if !fileExists(mainImgPath) {
